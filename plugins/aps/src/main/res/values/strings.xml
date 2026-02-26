@@ -34,6 +34,11 @@
     <string name="openaps_boost">Boost</string>
     <string name="boost_shortname">BOOST</string>
     <string name="description_boost">Boost based accelerated bolusing with dynamic ISF</string>
+    <string name="openaps_boost_v2">Boost V2</string>
+    <string name="boost_v2_shortname">BOOST2</string>
+    <string name="description_boost_v2">Boost V2 with Chris Wilson DynISF V2 formula (2300/ln·TDD²·0.02)</string>
+    <string name="boost_dynisf_v2_title">Dynamic ISF V2 (TDD²-based)</string>
+    <string name="boost_use_tdd_v2_summary">Calculate ISF using Chris Wilson V2 formula: 2300/(ln(BG/insulinDivisor+1)·TDD²·0.02). TDD is required for V2 — falls back to profile ISF if data is incomplete</string>
     <string name="boost_insulin_req_title">Boost Insulin Required %%</string>
     <string name="boost_insulin_req_summary">Percentage of algorithm-determined insulin to deliver as SMB. Default: 50</string>
     <string name="boost_bolus_title">Boost Bolus Cap</string>

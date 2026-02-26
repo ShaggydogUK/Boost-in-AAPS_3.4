@@ -1,0 +1,956 @@
+package app.aaps.plugins.aps.openAPSBoostV2
+
+import android.content.Context
+import android.content.Intent
+import androidx.core.net.toUri
+import androidx.preference.PreferenceCategory
+import androidx.preference.PreferenceFragmentCompat
+import androidx.preference.PreferenceManager
+import androidx.preference.PreferenceScreen
+import androidx.preference.SwitchPreference
+import app.aaps.core.data.aps.SMBDefaults
+import app.aaps.core.data.configuration.Constants
+import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.data.plugin.PluginType
+import app.aaps.core.data.time.T
+import app.aaps.core.interfaces.aps.APS
+import app.aaps.core.interfaces.aps.APSResult
+import app.aaps.core.interfaces.aps.AutosensResult
+import app.aaps.core.interfaces.aps.CurrentTemp
+import app.aaps.core.interfaces.aps.OapsProfileBoost
+import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
+import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.constraints.Constraint
+import app.aaps.core.interfaces.constraints.ConstraintsChecker
+import app.aaps.core.interfaces.constraints.PluginConstraints
+import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.db.ProcessedTbrEbData
+import app.aaps.plugins.aps.openAPSBoost.StepService
+import app.aaps.plugins.aps.openAPSSMB.GlucoseStatusCalculatorSMB
+import app.aaps.core.interfaces.iob.IobCobCalculator
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.plugin.PluginBase
+import app.aaps.core.interfaces.plugin.PluginDescription
+import app.aaps.core.interfaces.profile.Profile
+import app.aaps.core.interfaces.profile.ProfileFunction
+import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.profiling.Profiler
+import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
+import app.aaps.core.interfaces.stats.TddCalculator
+import app.aaps.core.interfaces.ui.UiInteraction
+import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.interfaces.utils.HardLimits
+import app.aaps.core.interfaces.utils.Round
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.IntentKey
+import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.UnitDoubleKey
+import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.objects.constraints.ConstraintObject
+import app.aaps.core.objects.extensions.convertedToAbsolute
+import app.aaps.core.objects.extensions.getPassedDurationToTimeInMinutes
+import app.aaps.core.objects.extensions.plannedRemainingMinutes
+import app.aaps.core.objects.extensions.put
+import app.aaps.core.objects.extensions.store
+import app.aaps.core.objects.extensions.target
+import app.aaps.core.objects.profile.ProfileSealed
+import app.aaps.core.utils.MidnightUtils
+import app.aaps.core.validators.preferences.AdaptiveDoublePreference
+import app.aaps.core.validators.preferences.AdaptiveIntPreference
+import app.aaps.core.validators.preferences.AdaptiveIntentPreference
+import app.aaps.core.validators.preferences.AdaptiveStringPreference
+import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
+import app.aaps.core.validators.preferences.AdaptiveUnitPreference
+import app.aaps.plugins.aps.OpenAPSFragment
+import app.aaps.plugins.aps.R
+import app.aaps.plugins.aps.events.EventOpenAPSUpdateGui
+import app.aaps.plugins.aps.events.EventResetOpenAPSGui
+import org.json.JSONObject
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
+import javax.inject.Inject
+import javax.inject.Provider
+import javax.inject.Singleton
+import kotlin.math.abs
+import kotlin.math.floor
+import kotlin.math.ln
+import kotlin.math.max
+import kotlin.math.min
+
+@Singleton
+open class OpenAPSBoostV2Plugin @Inject constructor(
+    aapsLogger: AAPSLogger,
+    private val rxBus: RxBus,
+    private val constraintsChecker: ConstraintsChecker,
+    rh: ResourceHelper,
+    private val profileFunction: ProfileFunction,
+    private val profileUtil: ProfileUtil,
+    private val config: Config,
+    private val activePlugin: ActivePlugin,
+    private val iobCobCalculator: IobCobCalculator,
+    private val hardLimits: HardLimits,
+    private val preferences: Preferences,
+    protected val dateUtil: DateUtil,
+    private val processedTbrEbData: ProcessedTbrEbData,
+    private val persistenceLayer: PersistenceLayer,
+    private val glucoseStatusCalculatorSMB: GlucoseStatusCalculatorSMB,
+    private val bgQualityCheck: BgQualityCheck,
+    private val uiInteraction: UiInteraction,
+    private val tddCalculator: TddCalculator,
+    private val determineBasalBoostV2: DetermineBasalBoostV2,
+    private val profiler: Profiler,
+    private val apsResultProvider: Provider<APSResult>
+) : PluginBase(
+    PluginDescription()
+        .mainType(PluginType.APS)
+        .fragmentClass(OpenAPSFragment::class.java.name)
+        .pluginIcon(app.aaps.core.ui.R.drawable.ic_generic_icon)
+        .pluginName(R.string.openaps_boost_v2)
+        .shortName(R.string.boost_v2_shortname)
+        .preferencesId(PluginDescription.PREFERENCE_SCREEN)
+        .preferencesVisibleInSimpleMode(false)
+        .showInList { config.APS }
+        .description(R.string.description_boost_v2),
+    aapsLogger, rh
+), APS, PluginConstraints {
+
+    // last values
+    override var lastAPSRun: Long = 0
+    override val algorithm = APSResult.Algorithm.BOOST
+    override var lastAPSResult: APSResult? = null
+
+    // ---- Boost V2 preference getters ----
+
+    // Dynamic ISF V2 (no velocity — full formula applied directly)
+    private val dynIsfNormalTarget; get() = preferences.get(DoubleKey.ApsBoostDynIsfNormalTarget)
+    private val dynIsfBgCap; get() = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.ApsBoostDynIsfBgCap))
+
+    // Boost SMB
+    private val boostBolus; get() = preferences.get(DoubleKey.ApsBoostBolus)
+    private val boostMaxIob; get() = preferences.get(DoubleKey.ApsBoostMaxIob)
+    private val boostInsulinReqPct; get() = preferences.get(DoubleKey.ApsBoostInsulinReqPct)
+    private val boostScale; get() = preferences.get(DoubleKey.ApsBoostScale)
+    private val boostPercentScale; get() = preferences.get(DoubleKey.ApsBoostPercentScale)
+    private val enableBoostPercentScale; get() = preferences.get(BooleanKey.ApsBoostEnablePercentScale)
+    private val enableCircadianIsf; get() = preferences.get(BooleanKey.ApsBoostEnableCircadianIsf)
+    private val allowBoostWithHighTt; get() = preferences.get(BooleanKey.ApsBoostAllowWithHighTt)
+
+    // Boost time window
+    private val boostStartTime; get() = preferences.get(StringKey.ApsBoostStartTime)
+    private val boostEndTime; get() = preferences.get(StringKey.ApsBoostEndTime)
+    private val sleepInHours; get() = preferences.get(DoubleKey.ApsBoostSleepInHours)
+
+    // Step counting thresholds
+    private val inactivitySteps; get() = preferences.get(IntKey.ApsBoostInactivitySteps)
+    private val inactivityPct; get() = preferences.get(DoubleKey.ApsBoostInactivityPct)
+    private val sleepInSteps; get() = preferences.get(IntKey.ApsBoostSleepInSteps)
+    private val activitySteps5; get() = preferences.get(IntKey.ApsBoostActivitySteps5)
+    private val activitySteps30; get() = preferences.get(IntKey.ApsBoostActivitySteps30)
+    private val activitySteps60; get() = preferences.get(IntKey.ApsBoostActivitySteps60)
+    private val activityPct; get() = preferences.get(DoubleKey.ApsBoostActivityPct)
+
+    // ---- Lifecycle ----
+
+    override fun specialEnableCondition(): Boolean {
+        return try {
+            activePlugin.activePump.pumpDescription.isTempBasalCapable
+        } catch (_: Exception) {
+            true
+        }
+    }
+
+    override fun specialShowInListCondition(): Boolean {
+        return try {
+            activePlugin.activePump.pumpDescription.isTempBasalCapable
+        } catch (_: Exception) {
+            true
+        }
+    }
+
+    override fun supportsDynamicIsf() = true
+
+    override fun getIsfMgdl(profile: Profile, caller: String): Double? {
+        // Boost computes ISF dynamically inside determine_basal via getIsfByProfile()
+        // Return null to fall back to profile ISF for external callers
+        return null
+    }
+
+    override fun getAverageIsfMgdl(timestamp: Long, caller: String): Double? = null
+
+    override fun getSensitivityOverviewString(): String? = null
+
+    override fun preprocessPreferences(preferenceFragment: PreferenceFragmentCompat) {
+        super.preprocessPreferences(preferenceFragment)
+        val smbAlwaysEnabled = preferences.get(BooleanKey.ApsUseSmbAlways)
+        val allowAllBgSources = preferences.get(BooleanKey.ApsBoostAllowAllBgSources)
+        val advancedFiltering = allowAllBgSources || activePlugin.activeBgSource.advancedFilteringSupported()
+        preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsUseSmbWithCob.key)?.isVisible = !smbAlwaysEnabled || !advancedFiltering
+        preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsUseSmbWithLowTt.key)?.isVisible = !smbAlwaysEnabled || !advancedFiltering
+        preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsUseSmbAfterCarbs.key)?.isVisible = !smbAlwaysEnabled || !advancedFiltering
+    }
+
+    // ---- ISF Pre-calculation (Chris Wilson DynISF V2) ----
+    // ISF = 2300 / (ln(BG/insulinDivisor + 1) · TDD² · 0.02)
+    // TDD is mandatory for V2 — falls back to profile ISF if data incomplete
+
+    data class BoostIsfResult(
+        val sensNormalTarget: Double,
+        val variableSens: Double,
+        val bgCapped: Double,
+        val insulinDivisor: Int,
+        val ratio: Double,
+        val tdd: Double,
+        val isfDebug: String = ""
+    )
+
+    private fun calculateBoostIsf(
+        profileSens: Double,
+        profilePercent: Int,
+        targetBg: Double,
+        insulinDivisor: Int,
+        glucoseValue: Double,
+        isTempTarget: Boolean
+    ): BoostIsfResult {
+        val autosensMax = preferences.get(DoubleKey.AutosensMax)
+        val autosensMin = preferences.get(DoubleKey.AutosensMin)
+        val bgCap = dynIsfBgCap
+        val bgNormalTarget = dynIsfNormalTarget
+        val highTtRaisesSens = preferences.get(BooleanKey.ApsAutoIsfHighTtRaisesSens)
+        val lowTtLowersSens = preferences.get(BooleanKey.ApsAutoIsfLowTtLowersSens)
+        val halfBasalTarget = SMBDefaults.half_basal_exercise_target
+
+        val globalScale = 100.0 / profilePercent.toDouble()
+
+        var sensNormalTarget = profileSens
+        var ratio = 1.0
+        var tdd = 0.0
+        val bgCurrent = if (glucoseValue > bgCap) bgCap + ((glucoseValue - bgCap) / 3.0) else glucoseValue
+
+        val debug = StringBuilder()
+
+        // TDD-based ISF calculation (mandatory for V2 formula)
+        val useTdd = preferences.get(BooleanKey.ApsBoostUseTdd)
+        val adjustSens = preferences.get(BooleanKey.ApsBoostAdjustSensitivity)
+
+        if (useTdd) {
+            // Fetch all TDD components — use allowMissingDays=true so partial data still works
+            val tdd7D = tddCalculator.averageTDD(tddCalculator.calculate(7, allowMissingDays = true))?.data?.totalAmount
+            val tdd1D = tddCalculator.averageTDD(tddCalculator.calculate(1, allowMissingDays = true))?.data?.totalAmount
+            val tddLast24H = tddCalculator.calculateDaily(-24, 0)?.totalAmount
+            val tddLast4H = tddCalculator.calculateDaily(-4, 0)?.totalAmount
+            val tddLast8to4H = tddCalculator.calculateDaily(-8, -4)?.totalAmount
+
+            debug.append("TDD data: 7D=${tdd7D?.let { Round.roundTo(it, 0.1) } ?: "null"}")
+            debug.append(" | 1D=${tdd1D?.let { Round.roundTo(it, 0.1) } ?: "null"}")
+            debug.append(" | 24H=${tddLast24H?.let { Round.roundTo(it, 0.1) } ?: "null"}")
+            debug.append(" | 4H=${tddLast4H?.let { Round.roundTo(it, 0.1) } ?: "null"}")
+            debug.append(" | 8-4H=${tddLast8to4H?.let { Round.roundTo(it, 0.1) } ?: "null"}")
+
+            // Require ALL critical components — same safety gate as standard DynISF
+            if (tdd7D != null && tdd1D != null && tddLast24H != null && tddLast4H != null && tddLast8to4H != null && tdd7D > 0) {
+                val tddWeightedFromLast8H = ((1.4 * tddLast4H) + (0.6 * tddLast8to4H)) * 3
+                debug.append("\nWeighted8H=${Round.roundTo(tddWeightedFromLast8H, 0.1)} (4H×1.4 + 8-4H×0.6)×3")
+
+                if (tddWeightedFromLast8H < (0.75 * tdd7D)) {
+                    // Recent insulin usage significantly below 7D average —
+                    // pull the 7D average down toward recent reality before blending
+                    val adjusted7D = tddWeightedFromLast8H + ((tddWeightedFromLast8H / tdd7D) * (tdd7D - tddWeightedFromLast8H))
+                    tdd = (adjusted7D * 0.34) + (tdd1D * 0.33) + (tddWeightedFromLast8H * 0.33)
+                    debug.append("\nW8H < 75% of 7D → adjusted7D=${Round.roundTo(adjusted7D, 0.1)} (7D ${Round.roundTo(tdd7D, 0.1)} pulled toward W8H)")
+                } else {
+                    // Standard blend
+                    tdd = (tddWeightedFromLast8H * 0.33) + (tdd7D * 0.34) + (tdd1D * 0.33)
+                    debug.append("\nStandard blend (W8H×.33 + 7D×.34 + 1D×.33)")
+                }
+                debug.append("\nBlended TDD=${Round.roundTo(tdd, 0.1)}")
+
+                // Adjustment factor from Boost DynISF preferences (default 100%)
+                val dynIsfAdjust = preferences.get(IntKey.ApsBoostDynIsfAdjustmentFactor).toDouble().coerceIn(1.0, 300.0)
+                tdd *= dynIsfAdjust / 100.0
+                debug.append("\nFinal TDD=${Round.roundTo(tdd, 0.1)} (adj factor ${dynIsfAdjust.toInt()}%)")
+
+                // Chris Wilson DynISF V2: ISF = 2300 / (ln(BG/insulinDivisor + 1) · TDD² · 0.02)
+                val logTerm = ln((bgNormalTarget / insulinDivisor) + 1.0)
+                if (tdd > 0 && logTerm > 0) {
+                    sensNormalTarget = 2300.0 / (logTerm * tdd * tdd * 0.02)
+                    sensNormalTarget *= globalScale
+                    debug.append("\nV2 ISF at target: ${Round.roundTo(sensNormalTarget, 0.1)} mg/dl/U (profile was ${Round.roundTo(profileSens, 0.1)})")
+                    debug.append("\n  Formula: 2300/(ln(${Round.roundTo(bgNormalTarget, 0.0)}/$insulinDivisor+1)×${Round.roundTo(tdd, 0.1)}²×0.02)")
+
+                    if (adjustSens && tddLast24H > 0) {
+                        ratio = max(min(tddLast24H / tdd7D, autosensMax), autosensMin)
+                        sensNormalTarget /= ratio
+                        debug.append("\nSens ratio: ${Round.roundTo(ratio, 0.01)} (24H/7D = ${Round.roundTo(tddLast24H, 0.1)}/${Round.roundTo(tdd7D, 0.1)}) → ISF=${Round.roundTo(sensNormalTarget, 0.1)}")
+                    }
+                } else {
+                    debug.append("\n⚠ TDD calculation produced invalid values (tdd=$tdd, logTerm=$logTerm) — using profile ISF")
+                    aapsLogger.warn(LTag.APS, "Boost V2 TDD ISF: invalid tdd=$tdd or logTerm=$logTerm, falling back to profile ISF")
+                }
+            } else {
+                debug.append("\n⚠ TDD data incomplete — using profile ISF")
+                aapsLogger.debug(LTag.APS, "Boost V2: TDD parts missing (7D=$tdd7D 1D=$tdd1D 24H=$tddLast24H 4H=$tddLast4H 8-4H=$tddLast8to4H)")
+            }
+        } else {
+            debug.append("⚠ TDD-based ISF disabled — V2 requires TDD for optimal operation (using profile ISF ${Round.roundTo(profileSens, 0.1)})")
+            aapsLogger.warn(LTag.APS, "Boost V2: TDD disabled but V2 formula requires TDD. Using profile ISF as fallback.")
+        }
+
+        // Temp target sensitivity adjustment
+        if (isTempTarget && ((highTtRaisesSens && targetBg > bgNormalTarget) || (lowTtLowersSens && targetBg < bgNormalTarget))) {
+            val c = (halfBasalTarget - bgNormalTarget).toDouble()
+            if (c * (c + targetBg - bgNormalTarget) > 0.0) {
+                ratio = c / (c + targetBg - bgNormalTarget)
+                ratio = max(min(ratio, autosensMax), autosensMin)
+                sensNormalTarget /= ratio
+                debug.append("\nTT adjustment: ratio=${Round.roundTo(ratio, 0.01)} → ISF=${Round.roundTo(sensNormalTarget, 0.1)}")
+                aapsLogger.debug(LTag.APS, "Boost V2 ISF adjusted by ${1.0 / ratio} due to TT of ${targetBg.toInt()}")
+            }
+        }
+
+        // Calculate variable_sens using V2 formula (full scaler, no velocity dampening)
+        val sbg = ln((bgCurrent / insulinDivisor) + 1.0)
+        val scaler = if (sbg > 0) ln((bgNormalTarget / insulinDivisor) + 1.0) / sbg else 1.0
+        val variableSens = sensNormalTarget * scaler
+
+        if (ratio == 1.0 && adjustSens && !useTdd) {
+            ratio = sensNormalTarget / variableSens
+        }
+
+        debug.append("\nVariable ISF at BG ${Round.roundTo(glucoseValue, 1.0)}: ${Round.roundTo(variableSens, 0.1)} (V2: full scale, no velocity)")
+
+        aapsLogger.debug(LTag.APS, "Boost V2 ISF: $debug")
+
+        return BoostIsfResult(
+            sensNormalTarget = Round.roundTo(sensNormalTarget, 0.1),
+            variableSens = Round.roundTo(variableSens, 0.1),
+            bgCapped = bgCurrent,
+            insulinDivisor = insulinDivisor,
+            ratio = Round.roundTo(ratio, 0.01),
+            tdd = tdd,
+            isfDebug = debug.toString()
+        )
+    }
+
+    // ---- Boost Time Window & Activity Detection ----
+    // Mirrors logic from DetermineBasalAdapterBoostJS.setData()
+
+    data class BoostActivityResult(
+        val boostActive: Boolean,
+        val profileSwitch: Int,
+        val minBg: Double,
+        val maxBg: Double,
+        val targetBg: Double,
+        val debugReason: String = ""
+    )
+
+    private fun calculateBoostActivity(
+        now: Long,
+        tempTargetSet: Boolean,
+        targetBg: Double,
+        minBg: Double,
+        maxBg: Double,
+        profilePercent: Int
+    ): BoostActivityResult {
+        val debug = StringBuilder()
+        val midnight = now - MidnightUtils.milliSecFromMidnight(now)
+        val sleepInMillis = (3600000.0 * sleepInHours).toLong()
+
+        var boostStart = midnight + parseTimeToMillis(boostStartTime)
+        var boostEnd = midnight + parseTimeToMillis(boostEndTime)
+
+        val nowTime = java.time.Instant.ofEpochMilli(now).atZone(java.time.ZoneId.systemDefault()).toLocalTime()
+        debug.append("Boost window: $boostStartTime–$boostEndTime | Now: ${nowTime.format(DateTimeFormatter.ofPattern("HH:mm"))}")
+
+        if (boostStart > boostEnd) {
+            if (now > boostEnd) boostEnd += 86400000L
+            else boostStart -= 86400000L
+            debug.append(" (overnight wrap)")
+        }
+
+        var boostActive = now in boostStart until boostEnd
+        var disableReason = ""
+
+        if (!boostActive) {
+            disableReason = "Outside boost time window"
+        }
+
+        // Disable boost if high temp target and not allowed
+        if (boostActive && tempTargetSet && !allowBoostWithHighTt && targetBg > dynIsfNormalTarget) {
+            boostActive = false
+            disableReason = "High temp target ($targetBg > ${dynIsfNormalTarget})"
+            aapsLogger.debug(LTag.APS, "Boost disabled due to high temptarget of $targetBg")
+        }
+
+        val recentSteps5Min = StepService.getRecentStepCount5Min()
+        val recentSteps15Min = StepService.getRecentStepCount15Min()
+        val recentSteps30Min = StepService.getRecentStepCount30Min()
+        val recentSteps60Min = StepService.getRecentStepCount60Min()
+
+        debug.append("\nSteps: 5m=$recentSteps5Min 15m=$recentSteps15Min 30m=$recentSteps30Min 60m=$recentSteps60Min")
+
+        // Sleep-in detection
+        val inSleepInWindow = now in boostStart until (boostStart + sleepInMillis)
+        if (boostActive && inSleepInWindow && recentSteps60Min < sleepInSteps) {
+            boostActive = false
+            disableReason = "Sleep-in (60m steps $recentSteps60Min < threshold $sleepInSteps, within ${sleepInHours}h of start)"
+            aapsLogger.debug(LTag.APS, "Boost disabled due to lie-in")
+        } else if (inSleepInWindow && boostActive) {
+            debug.append("\nSleep-in window active but overridden (steps $recentSteps60Min >= $sleepInSteps)")
+        }
+
+        var activityMinBg = minBg
+        var activityMaxBg = maxBg
+        var activityTargetBg = targetBg
+        var currentProfileSwitch = profilePercent
+        var activityState = "none"
+
+        if (boostActive) {
+            val activityBgTarget = 150.0
+            val isActive = recentSteps5Min > activitySteps5
+                || recentSteps30Min > activitySteps30
+                || recentSteps60Min > activitySteps60
+                || (recentSteps5Min < activitySteps5 && recentSteps15Min > activitySteps5)
+
+            if (isActive) {
+                activityState = "ACTIVE"
+                if (currentProfileSwitch == 100) {
+                    currentProfileSwitch = activityPct.toInt()
+                    aapsLogger.debug(LTag.APS, "Profile changed to $activityPct% due to activity")
+                }
+                if (!tempTargetSet) {
+                    activityMinBg = activityBgTarget
+                    activityMaxBg = activityBgTarget
+                    activityTargetBg = activityBgTarget
+                    aapsLogger.debug(LTag.APS, "TargetBG changed to $activityBgTarget due to activity")
+                }
+                debug.append("\nActivity detected → profile ${currentProfileSwitch}%, target ${activityTargetBg}")
+            } else if (currentProfileSwitch == 100 && recentSteps60Min < inactivitySteps) {
+                activityState = "INACTIVE"
+                currentProfileSwitch = inactivityPct.toInt()
+                debug.append("\nInactivity detected (60m steps $recentSteps60Min < $inactivitySteps) → profile ${currentProfileSwitch}%")
+                aapsLogger.debug(LTag.APS, "Profile changed to $inactivityPct% due to inactivity")
+            } else {
+                activityState = "normal"
+                debug.append("\nActivity: normal (no adjustment)")
+            }
+        }
+
+        if (boostActive) {
+            debug.append("\n✓ BOOST ACTIVE ($activityState)")
+        } else {
+            debug.append("\n✗ BOOST INACTIVE: $disableReason")
+        }
+
+        return BoostActivityResult(
+            boostActive = boostActive,
+            profileSwitch = currentProfileSwitch,
+            minBg = activityMinBg,
+            maxBg = activityMaxBg,
+            targetBg = activityTargetBg,
+            debugReason = debug.toString()
+        )
+    }
+
+    private fun parseTimeToMillis(timeStr: String): Long {
+        return try {
+            val time = LocalTime.parse(timeStr, DateTimeFormatter.ofPattern("H:mm"))
+            (time.hour * 3600000L) + (time.minute * 60000L)
+        } catch (_: DateTimeParseException) {
+            try {
+                val time = LocalTime.parse(timeStr, DateTimeFormatter.ofPattern("HH:mm"))
+                (time.hour * 3600000L) + (time.minute * 60000L)
+            } catch (_: DateTimeParseException) {
+                aapsLogger.error(LTag.APS, "Failed to parse time: $timeStr, defaulting to 0")
+                0L
+            }
+        }
+    }
+
+    // ---- Main invoke ----
+
+    override fun invoke(initiator: String, tempBasalFallback: Boolean) {
+        aapsLogger.debug(LTag.APS, "invoke from $initiator tempBasalFallback: $tempBasalFallback")
+        lastAPSResult = null
+        val glucoseStatus = glucoseStatusCalculatorSMB.glucoseStatusData
+        val profile = profileFunction.getProfile()
+        val pump = activePlugin.activePump
+        if (profile == null) {
+            rxBus.send(EventResetOpenAPSGui(rh.gs(app.aaps.core.ui.R.string.no_profile_set)))
+            aapsLogger.debug(LTag.APS, rh.gs(app.aaps.core.ui.R.string.no_profile_set))
+            return
+        }
+        if (!isEnabled()) {
+            rxBus.send(EventResetOpenAPSGui(rh.gs(R.string.openapsma_disabled)))
+            aapsLogger.debug(LTag.APS, rh.gs(R.string.openapsma_disabled))
+            return
+        }
+        if (glucoseStatus == null) {
+            rxBus.send(EventResetOpenAPSGui(rh.gs(R.string.openapsma_no_glucose_data)))
+            aapsLogger.debug(LTag.APS, rh.gs(R.string.openapsma_no_glucose_data))
+            return
+        }
+
+        val inputConstraints = ConstraintObject(0.0, aapsLogger)
+
+        if (!hardLimits.checkHardLimits(profile.dia, app.aaps.core.ui.R.string.profile_dia, hardLimits.minDia(), hardLimits.maxDia())) return
+        if (!hardLimits.checkHardLimits(
+                profile.getIcTimeFromMidnight(MidnightUtils.secondsFromMidnight()),
+                app.aaps.core.ui.R.string.profile_carbs_ratio_value,
+                hardLimits.minIC(),
+                hardLimits.maxIC()
+            )
+        ) return
+        if (!hardLimits.checkHardLimits(profile.getIsfMgdl("OpenAPSBoostV2Plugin"), app.aaps.core.ui.R.string.profile_sensitivity_value, HardLimits.MIN_ISF, HardLimits.MAX_ISF)) return
+        if (!hardLimits.checkHardLimits(profile.getMaxDailyBasal(), app.aaps.core.ui.R.string.profile_max_daily_basal_value, 0.02, hardLimits.maxBasal())) return
+        if (!hardLimits.checkHardLimits(pump.baseBasalRate, app.aaps.core.ui.R.string.current_basal_value, 0.01, hardLimits.maxBasal())) return
+
+        // End of checks, start gathering data
+
+        val smbEnabled = preferences.get(BooleanKey.ApsUseSmb)
+        val allowAllBgSources = preferences.get(BooleanKey.ApsBoostAllowAllBgSources)
+        val advancedFiltering = allowAllBgSources || constraintsChecker.isAdvancedFilteringEnabled().also { inputConstraints.copyReasons(it) }.value()
+        val now = dateUtil.now()
+
+        val tb = processedTbrEbData.getTempBasalIncludingConvertedExtended(now)
+        val currentTemp = CurrentTemp(
+            duration = tb?.plannedRemainingMinutes ?: 0,
+            rate = tb?.convertedToAbsolute(now, profile) ?: 0.0,
+            minutesrunning = tb?.getPassedDurationToTimeInMinutes(now)
+        )
+
+        var minBg = hardLimits.verifyHardLimits(Round.roundTo(profile.getTargetLowMgdl(), 0.1), app.aaps.core.ui.R.string.profile_low_target, HardLimits.LIMIT_MIN_BG[0], HardLimits.LIMIT_MIN_BG[1])
+        var maxBg = hardLimits.verifyHardLimits(Round.roundTo(profile.getTargetHighMgdl(), 0.1), app.aaps.core.ui.R.string.profile_high_target, HardLimits.LIMIT_MAX_BG[0], HardLimits.LIMIT_MAX_BG[1])
+        var targetBg = hardLimits.verifyHardLimits(profile.getTargetMgdl(), app.aaps.core.ui.R.string.temp_target_value, HardLimits.LIMIT_TARGET_BG[0], HardLimits.LIMIT_TARGET_BG[1])
+        var isTempTarget = false
+        persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())?.let { tempTarget ->
+            isTempTarget = true
+            minBg = hardLimits.verifyHardLimits(tempTarget.lowTarget, app.aaps.core.ui.R.string.temp_target_low_target, HardLimits.LIMIT_TEMP_MIN_BG[0], HardLimits.LIMIT_TEMP_MIN_BG[1])
+            maxBg = hardLimits.verifyHardLimits(tempTarget.highTarget, app.aaps.core.ui.R.string.temp_target_high_target, HardLimits.LIMIT_TEMP_MAX_BG[0], HardLimits.LIMIT_TEMP_MAX_BG[1])
+            targetBg = hardLimits.verifyHardLimits(tempTarget.target(), app.aaps.core.ui.R.string.temp_target_value, HardLimits.LIMIT_TEMP_TARGET_BG[0], HardLimits.LIMIT_TEMP_TARGET_BG[1])
+        }
+
+        var autosensResult = AutosensResult()
+        if (constraintsChecker.isAutosensModeEnabled().value()) {
+            val autosensData = iobCobCalculator.getLastAutosensDataWithWaitForCalculationFinish("OpenAPSBoostV2Plugin")
+            if (autosensData == null) {
+                rxBus.send(EventResetOpenAPSGui(rh.gs(R.string.openaps_no_as_data)))
+                return
+            }
+            autosensResult = autosensData.autosensResult
+        } else autosensResult.sensResult = "autosens disabled"
+
+        val iobArray = iobCobCalculator.calculateIobArrayForSMB(autosensResult, SMBDefaults.exercise_mode, SMBDefaults.half_basal_exercise_target, isTempTarget)
+        val mealData = iobCobCalculator.getMealDataWithWaitingForCalculationFinish()
+        val profilePercent = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else 100
+        val microBolusAllowed = constraintsChecker.isSMBModeEnabled(ConstraintObject(tempBasalFallback.not(), aapsLogger)).also { inputConstraints.copyReasons(it) }.value()
+        val flatBGsDetected = bgQualityCheck.state == BgQualityCheck.State.FLAT
+
+        // ---- Boost-specific calculations ----
+
+        // 1. Activity detection & boost time window
+        val activityResult = calculateBoostActivity(now, isTempTarget, targetBg, minBg, maxBg, profilePercent)
+
+        // 2. Insulin peak / divisor calculation
+        val insulin = activePlugin.activeInsulin
+        val insulinPeak = insulin.peak.coerceIn(30, 75)
+        val insulinDivisor = if (insulinPeak < 60) (90 - insulinPeak) + 30 else (90 - insulinPeak) + 40
+
+        // 3. ISF pre-calculation
+        val profileScale = activityResult.profileSwitch.toDouble() / 100.0
+        val scaledProfileSens = profile.getIsfMgdl("OpenAPSBoostV2Plugin") * profileScale
+        val isfResult = calculateBoostIsf(
+            profileSens = scaledProfileSens,
+            profilePercent = activityResult.profileSwitch,
+            targetBg = targetBg,
+            insulinDivisor = insulinDivisor,
+            glucoseValue = glucoseStatus.glucose,
+            isTempTarget = isTempTarget
+        )
+
+        // 4. Adjust autosens ratio from ISF calculation
+        autosensResult.ratio = isfResult.ratio
+
+        // 5. Adjust basal if profile switch from activity
+        val currentBasal = if (activityResult.profileSwitch != 100) {
+            val adjusted = pump.baseBasalRate * profileScale
+            aapsLogger.debug(LTag.APS, "Basal adjusted to $adjusted")
+            adjusted
+        } else pump.baseBasalRate
+
+        // 6. Step counts
+        val recentSteps5Min = StepService.getRecentStepCount5Min()
+        val recentSteps15Min = StepService.getRecentStepCount15Min()
+        val recentSteps30Min = StepService.getRecentStepCount30Min()
+        val recentSteps60Min = StepService.getRecentStepCount60Min()
+
+        // ---- Build the OapsProfileBoost ----
+
+        val oapsProfile = OapsProfileBoost(
+            // Standard oref1 fields
+            dia = 0.0,
+            min_5m_carbimpact = 0.0,
+            max_iob = constraintsChecker.getMaxIOBAllowed().also { inputConstraints.copyReasons(it) }.value(),
+            max_daily_basal = profile.getMaxDailyBasal(),
+            max_basal = constraintsChecker.getMaxBasalAllowed(profile).also { inputConstraints.copyReasons(it) }.value(),
+            min_bg = activityResult.minBg,
+            max_bg = activityResult.maxBg,
+            target_bg = activityResult.targetBg,
+            carb_ratio = profile.getIc(),
+            sens = profile.getIsfMgdl("OpenAPSBoostV2Plugin"),
+            autosens_adjust_targets = false,
+            max_daily_safety_multiplier = preferences.get(DoubleKey.ApsMaxDailyMultiplier),
+            current_basal_safety_multiplier = preferences.get(DoubleKey.ApsMaxCurrentBasalMultiplier),
+            lgsThreshold = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.ApsLgsThreshold)).toInt(),
+            high_temptarget_raises_sensitivity = preferences.get(BooleanKey.ApsAutoIsfHighTtRaisesSens),
+            low_temptarget_lowers_sensitivity = preferences.get(BooleanKey.ApsAutoIsfLowTtLowersSens),
+            sensitivity_raises_target = true,
+            resistance_lowers_target = true,
+            adv_target_adjustments = true,
+            exercise_mode = SMBDefaults.exercise_mode,
+            half_basal_exercise_target = SMBDefaults.half_basal_exercise_target,
+            maxCOB = SMBDefaults.maxCOB,
+            skip_neutral_temps = pump.setNeutralTempAtFullHour(),
+            remainingCarbsCap = SMBDefaults.remainingCarbsCap,
+            enableUAM = constraintsChecker.isUAMEnabled().also { inputConstraints.copyReasons(it) }.value(),
+            A52_risk_enable = SMBDefaults.A52_risk_enable,
+            SMBInterval = preferences.get(IntKey.ApsMaxSmbFrequency),
+            enableSMB_with_COB = smbEnabled && preferences.get(BooleanKey.ApsUseSmbWithCob),
+            enableSMB_with_temptarget = smbEnabled && preferences.get(BooleanKey.ApsUseSmbWithLowTt),
+            allowSMB_with_high_temptarget = smbEnabled && preferences.get(BooleanKey.ApsUseSmbWithHighTt),
+            enableSMB_always = smbEnabled && preferences.get(BooleanKey.ApsUseSmbAlways) && advancedFiltering,
+            enableSMB_after_carbs = smbEnabled && preferences.get(BooleanKey.ApsUseSmbAfterCarbs) && advancedFiltering,
+            maxSMBBasalMinutes = preferences.get(IntKey.ApsMaxMinutesOfBasalToLimitSmb),
+            maxUAMSMBBasalMinutes = preferences.get(IntKey.ApsUamMaxMinutesOfBasalToLimitSmb),
+            bolus_increment = pump.pumpDescription.bolusStep,
+            carbsReqThreshold = preferences.get(IntKey.ApsCarbsRequestThreshold),
+            current_basal = currentBasal,
+            temptargetSet = isTempTarget,
+            autosens_max = preferences.get(DoubleKey.AutosensMax),
+            out_units = if (profileFunction.getUnits() == GlucoseUnit.MMOL) "mmol/L" else "mg/dl",
+
+            // Dynamic ISF fields
+            dynISFBgCap = dynIsfBgCap,
+            dynISFBgCapped = isfResult.bgCapped,
+            sensNormalTarget = isfResult.sensNormalTarget,
+            normalTarget = dynIsfNormalTarget,
+            dynISFvelocity = 1.0,  // V2: full velocity, no dampening
+            insulinPeak = insulinPeak,
+            variable_sens = isfResult.variableSens,
+            insulinDivisor = insulinDivisor,
+            TDD = isfResult.tdd,
+
+            // Boost SMB fields
+            boostActive = activityResult.boostActive,
+            profileSwitch = activityResult.profileSwitch,
+            boost_bolus = boostBolus,
+            boost_maxIOB = boostMaxIob,
+            Boost_InsulinReq = boostInsulinReqPct,
+            boost_scale = boostScale,
+            boost_percent_scale = boostPercentScale,
+            enableBoostPercentScale = enableBoostPercentScale,
+            enableCircadianISF = enableCircadianIsf,
+            allowBoost_with_high_temptarget = allowBoostWithHighTt,
+
+            // Step counter data
+            recentSteps5Minutes = recentSteps5Min,
+            recentSteps15Minutes = recentSteps15Min,
+            recentSteps30Minutes = recentSteps30Min,
+            recentSteps60Minutes = recentSteps60Min,
+
+            // Debug context
+            boostDebugReason = activityResult.debugReason,
+            isfDebugReason = isfResult.isfDebug
+        )
+
+        aapsLogger.debug(LTag.APS, ">>> Invoking determine_basal Boost V2 <<<")
+        aapsLogger.debug(LTag.APS, "Glucose status:     $glucoseStatus")
+        aapsLogger.debug(LTag.APS, "Current temp:       $currentTemp")
+        aapsLogger.debug(LTag.APS, "IOB data:           ${iobArray.joinToString()}")
+        aapsLogger.debug(LTag.APS, "Profile:            $oapsProfile")
+        aapsLogger.debug(LTag.APS, "Autosens data:      $autosensResult")
+        aapsLogger.debug(LTag.APS, "Meal data:          $mealData")
+        aapsLogger.debug(LTag.APS, "MicroBolusAllowed:  $microBolusAllowed")
+        aapsLogger.debug(LTag.APS, "flatBGsDetected:    $flatBGsDetected")
+        aapsLogger.debug(LTag.APS, "BoostActive:        ${activityResult.boostActive}")
+
+        determineBasalBoostV2.determine_basal(
+            glucose_status = glucoseStatus,
+            currenttemp = currentTemp,
+            iob_data_array = iobArray,
+            profile = oapsProfile,
+            autosens_data = autosensResult,
+            meal_data = mealData,
+            microBolusAllowed = microBolusAllowed,
+            currentTime = now,
+            flatBGsDetected = flatBGsDetected
+        ).also {
+            val determineBasalResult = apsResultProvider.get().with(it)
+            determineBasalResult.inputConstraints = inputConstraints
+            determineBasalResult.autosensResult = autosensResult
+            determineBasalResult.iobData = iobArray
+            determineBasalResult.glucoseStatus = glucoseStatus
+            determineBasalResult.currentTemp = currentTemp
+            determineBasalResult.oapsProfileBoost = oapsProfile
+            determineBasalResult.mealData = mealData
+            lastAPSResult = determineBasalResult
+            lastAPSRun = now
+            aapsLogger.debug(LTag.APS, "Result: $it")
+            rxBus.send(EventAPSCalculationFinished())
+        }
+
+        rxBus.send(EventOpenAPSUpdateGui())
+    }
+
+    // ---- Glucose status ----
+
+    override fun getGlucoseStatusData(allowOldData: Boolean) = glucoseStatusCalculatorSMB.getGlucoseStatusData(allowOldData)
+
+    // ---- Constraints ----
+
+    override fun isSuperBolusEnabled(value: Constraint<Boolean>): Constraint<Boolean> {
+        value.set(false)
+        return value
+    }
+
+    override fun applyMaxIOBConstraints(maxIob: Constraint<Double>): Constraint<Double> {
+        if (isEnabled()) {
+            val maxIobPref = preferences.get(DoubleKey.ApsSmbMaxIob)
+            maxIob.setIfSmaller(maxIobPref, rh.gs(R.string.limiting_iob, maxIobPref, rh.gs(R.string.maxvalueinpreferences)), this)
+            maxIob.setIfSmaller(hardLimits.maxIobSMB(), rh.gs(R.string.limiting_iob, hardLimits.maxIobSMB(), rh.gs(R.string.hardlimit)), this)
+        }
+        return maxIob
+    }
+
+    override fun applyBasalConstraints(absoluteRate: Constraint<Double>, profile: Profile): Constraint<Double> {
+        if (isEnabled()) {
+            var maxBasal = preferences.get(DoubleKey.ApsMaxBasal)
+            if (maxBasal < profile.getMaxDailyBasal()) {
+                maxBasal = profile.getMaxDailyBasal()
+                absoluteRate.addReason(rh.gs(R.string.increasing_max_basal), this)
+            }
+            absoluteRate.setIfSmaller(maxBasal, rh.gs(app.aaps.core.ui.R.string.limitingbasalratio, maxBasal, rh.gs(R.string.maxvalueinpreferences)), this)
+
+            val maxBasalMultiplier = preferences.get(DoubleKey.ApsMaxCurrentBasalMultiplier)
+            val maxFromBasalMultiplier = floor(maxBasalMultiplier * profile.getBasal() * 100) / 100
+            absoluteRate.setIfSmaller(
+                maxFromBasalMultiplier,
+                rh.gs(app.aaps.core.ui.R.string.limitingbasalratio, maxFromBasalMultiplier, rh.gs(R.string.max_basal_multiplier)),
+                this
+            )
+            val maxBasalFromDaily = preferences.get(DoubleKey.ApsMaxDailyMultiplier)
+            val maxFromDaily = floor(profile.getMaxDailyBasal() * maxBasalFromDaily * 100) / 100
+            absoluteRate.setIfSmaller(maxFromDaily, rh.gs(app.aaps.core.ui.R.string.limitingbasalratio, maxFromDaily, rh.gs(R.string.max_daily_basal_multiplier)), this)
+        }
+        return absoluteRate
+    }
+
+    override fun isSMBModeEnabled(value: Constraint<Boolean>): Constraint<Boolean> {
+        val enabled = preferences.get(BooleanKey.ApsUseSmb)
+        if (!enabled) value.set(false, rh.gs(R.string.smb_disabled_in_preferences), this)
+        else if (isNightModeActive()) value.set(false, rh.gs(R.string.boost_night_mode_smb_disabled), this)
+        return value
+    }
+
+    // ---- Night Mode ----
+
+    private var lastNightModeRun: Long = 0
+    private var lastNightModeResult: Boolean = false
+
+    private fun isNightModeActive(): Boolean {
+        val currentTimeMillis = System.currentTimeMillis()
+        val timeAligned = currentTimeMillis - (currentTimeMillis % 1000)
+        if (lastNightModeRun >= timeAligned) return lastNightModeResult
+        lastNightModeResult = isNightModeActiveImpl()
+        lastNightModeRun = timeAligned
+        return lastNightModeResult
+    }
+
+    private fun isNightModeActiveImpl(): Boolean {
+        if (!preferences.get(BooleanKey.ApsBoostNightModeEnabled)) return false
+
+        val bgCurrent = glucoseStatusCalculatorSMB.getGlucoseStatusData(true)?.glucose ?: return false
+
+        val now = System.currentTimeMillis()
+        val midnight = now - MidnightUtils.milliSecFromMidnight(now)
+        val startStr = preferences.get(StringKey.ApsBoostNightModeStart)
+        val endStr = preferences.get(StringKey.ApsBoostNightModeEnd)
+        val start = midnight + parseTimeToMillis(startStr)
+        val end = midnight + parseTimeToMillis(endStr)
+        val active = if (end > start) now in start until end
+        else (now in (start - 86400000) until end || now in start until (end + 86400000))
+
+        if (!active) return false
+
+        // Disable night mode when COB > 0
+        if (preferences.get(BooleanKey.ApsBoostNightModeDisableWithCob)) {
+            val mealData = iobCobCalculator.getMealDataWithWaitingForCalculationFinish()
+            if (mealData.mealCOB > 0) return false
+        }
+
+        // Disable night mode with low temp target
+        if (preferences.get(BooleanKey.ApsBoostNightModeDisableWithLowTt)) {
+            val profile = profileFunction.getProfile() ?: return false
+            val profileTarget = profile.getTargetMgdl()
+            persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())?.let { tempTarget ->
+                val targetBg = hardLimits.verifyHardLimits(
+                    tempTarget.target(), app.aaps.core.ui.R.string.temp_target_value,
+                    HardLimits.LIMIT_TEMP_TARGET_BG[0], HardLimits.LIMIT_TEMP_TARGET_BG[1]
+                )
+                if (targetBg < profileTarget) return false
+            }
+        }
+
+        // Check BG vs profile target + offset
+        val profile = profileFunction.getProfile() ?: return false
+        val profileTarget = profile.getTargetMgdl()
+        val bgOffset = preferences.get(DoubleKey.ApsBoostNightModeBgOffset)
+        return bgCurrent < profileTarget + bgOffset
+    }
+
+    override fun isUAMEnabled(value: Constraint<Boolean>): Constraint<Boolean> {
+        val enabled = preferences.get(BooleanKey.ApsUseUam)
+        if (!enabled) value.set(false, rh.gs(R.string.uam_disabled_in_preferences), this)
+        return value
+    }
+
+    override fun isAutosensModeEnabled(value: Constraint<Boolean>): Constraint<Boolean> {
+        val enabled = preferences.get(BooleanKey.ApsUseAutosens)
+        if (!enabled) value.set(false, rh.gs(R.string.autosens_disabled_in_preferences), this)
+        return value
+    }
+
+    override fun configuration(): JSONObject =
+        JSONObject()
+            .put(BooleanKey.ApsBoostEnablePercentScale, preferences)
+            .put(BooleanKey.ApsBoostEnableCircadianIsf, preferences)
+
+    override fun applyConfiguration(configuration: JSONObject) {
+        configuration
+            .store(BooleanKey.ApsBoostEnablePercentScale, preferences)
+            .store(BooleanKey.ApsBoostEnableCircadianIsf, preferences)
+    }
+
+    // ---- Preferences screen ----
+
+    override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
+        if (requiredKey != null &&
+            requiredKey != "absorption_smb_advanced" &&
+            requiredKey != "boost_settings" &&
+            requiredKey != "boost_stepcount_settings" &&
+            requiredKey != "boost_night_mode_settings" &&
+            requiredKey != "boost_dynisf_settings"
+        ) return
+        val category = PreferenceCategory(context)
+        parent.addPreference(category)
+        category.apply {
+            key = "openapsboostv2_settings"
+            title = rh.gs(R.string.openaps_boost_v2)
+            initialExpandedChildrenCount = 0
+            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxBasal, dialogMessage = R.string.openapsma_max_basal_summary, title = R.string.openapsma_max_basal_title))
+            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsSmbMaxIob, dialogMessage = R.string.openapssmb_max_iob_summary, title = R.string.openapssmb_max_iob_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseAutosens, title = R.string.openapsama_use_autosens))
+            // sensitivity_raises_target and resistance_lowers_target are hardcoded true in V2
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfHighTtRaisesSens, summary = R.string.high_temptarget_raises_sensitivity_summary, title = R.string.high_temptarget_raises_sensitivity_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfLowTtLowersSens, summary = R.string.low_temptarget_lowers_sensitivity_summary, title = R.string.low_temptarget_lowers_sensitivity_title))
+
+            // Boost-specific SMB settings
+            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostInsulinReqPct, dialogMessage = R.string.boost_insulin_req_summary, title = R.string.boost_insulin_req_title))
+            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostBolus, dialogMessage = R.string.boost_bolus_summary, title = R.string.boost_bolus_title))
+            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostPercentScale, dialogMessage = R.string.boost_percent_scale_summary, title = R.string.boost_percent_scale_title))
+            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostScale, dialogMessage = R.string.boost_scale_summary, title = R.string.boost_scale_title))
+            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostMaxIob, dialogMessage = R.string.boost_max_iob_summary, title = R.string.boost_max_iob_title))
+
+            // Boost time window
+            addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.ApsBoostStartTime, dialogMessage = R.string.boost_start_summary, title = R.string.boost_start_title))
+            addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.ApsBoostEndTime, dialogMessage = R.string.boost_end_summary, title = R.string.boost_end_title))
+
+            // Dynamic ISF V2 sub-screen
+            addPreference(preferenceManager.createPreferenceScreen(context).apply {
+                key = "boost_dynisf_settings"
+                title = rh.gs(R.string.boost_dynisf_v2_title)
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostUseTdd, summary = R.string.boost_use_tdd_v2_summary, title = R.string.boost_use_tdd_title))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostAdjustSensitivity, summary = R.string.boost_adjust_sensitivity_summary, title = R.string.boost_adjust_sensitivity_title))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostDynIsfNormalTarget, dialogMessage = R.string.boost_dynisf_normal_target_summary, title = R.string.boost_dynisf_normal_target_title))
+                addPreference(AdaptiveUnitPreference(ctx = context, unitKey = UnitDoubleKey.ApsBoostDynIsfBgCap, dialogMessage = R.string.boost_dynisf_bg_cap_summary, title = R.string.boost_dynisf_bg_cap_title))
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostDynIsfAdjustmentFactor, dialogMessage = R.string.boost_dynisf_adjust_factor_summary, title = R.string.boost_dynisf_adjust_factor_title))
+            })
+
+            // SMB enables
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmb, summary = R.string.enable_smb_summary, title = R.string.enable_smb))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmbWithHighTt, summary = R.string.enable_smb_with_high_temp_target_summary, title = R.string.enable_smb_with_high_temp_target))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostAllowWithHighTt, summary = R.string.boost_allow_high_tt_summary, title = R.string.boost_allow_high_tt_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmbAlways, summary = R.string.enable_smb_always_summary, title = R.string.enable_smb_always))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmbWithCob, summary = R.string.enable_smb_with_cob_summary, title = R.string.enable_smb_with_cob))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmbWithLowTt, summary = R.string.enable_smb_with_temp_target_summary, title = R.string.enable_smb_with_temp_target))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmbAfterCarbs, summary = R.string.enable_smb_after_carbs_summary, title = R.string.enable_smb_after_carbs))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostEnablePercentScale, summary = R.string.boost_enable_percent_scale_summary, title = R.string.boost_enable_percent_scale_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostEnableCircadianIsf, summary = R.string.boost_enable_circadian_isf_summary, title = R.string.boost_enable_circadian_isf_title))
+            addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsMaxSmbFrequency, title = R.string.smb_interval_summary))
+            addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsMaxMinutesOfBasalToLimitSmb, title = R.string.smb_max_minutes_summary))
+            addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsUamMaxMinutesOfBasalToLimitSmb, dialogMessage = R.string.uam_smb_max_minutes, title = R.string.uam_smb_max_minutes_summary))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseUam, summary = R.string.enable_uam_summary, title = R.string.enable_uam))
+            addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsCarbsRequestThreshold, dialogMessage = R.string.carbs_req_threshold_summary, title = R.string.carbs_req_threshold))
+
+            // Step count settings sub-screen
+            addPreference(preferenceManager.createPreferenceScreen(context).apply {
+                key = "boost_stepcount_settings"
+                title = rh.gs(R.string.boost_stepcount_settings_title)
+                summary = rh.gs(R.string.boost_stepcount_settings_summary)
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostInactivitySteps, dialogMessage = R.string.boost_inactivity_steps_summary, title = R.string.boost_inactivity_steps_title))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostInactivityPct, dialogMessage = R.string.boost_inactivity_pct_summary, title = R.string.boost_inactivity_pct_title))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostSleepInHours, dialogMessage = R.string.boost_sleep_in_hrs_summary, title = R.string.boost_sleep_in_hrs_title))
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostSleepInSteps, dialogMessage = R.string.boost_sleep_in_steps_summary, title = R.string.boost_sleep_in_steps_title))
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostActivitySteps5, dialogMessage = R.string.boost_activity_steps_5_summary, title = R.string.boost_activity_steps_5_title))
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostActivitySteps30, dialogMessage = R.string.boost_activity_steps_30_summary, title = R.string.boost_activity_steps_30_title))
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostActivitySteps60, dialogMessage = R.string.boost_activity_steps_60_summary, title = R.string.boost_activity_steps_60_title))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostActivityPct, dialogMessage = R.string.boost_activity_pct_summary, title = R.string.boost_activity_pct_title))
+            })
+
+            // Night Mode sub-screen
+            addPreference(preferenceManager.createPreferenceScreen(context).apply {
+                key = "boost_night_mode_settings"
+                title = rh.gs(R.string.boost_night_mode_title)
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostNightModeEnabled, summary = R.string.boost_night_mode_enabled_summary, title = R.string.boost_night_mode_enabled_title))
+                addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.ApsBoostNightModeStart, dialogMessage = R.string.boost_night_mode_start_summary, title = R.string.boost_night_mode_start_title))
+                addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.ApsBoostNightModeEnd, dialogMessage = R.string.boost_night_mode_end_summary, title = R.string.boost_night_mode_end_title))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostNightModeBgOffset, dialogMessage = R.string.boost_night_mode_bg_offset_summary, title = R.string.boost_night_mode_bg_offset_title))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostNightModeDisableWithCob, summary = R.string.boost_night_mode_disable_with_cob_summary, title = R.string.boost_night_mode_disable_with_cob_title))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostNightModeDisableWithLowTt, summary = R.string.boost_night_mode_disable_with_low_tt_summary, title = R.string.boost_night_mode_disable_with_low_tt_title))
+            })
+
+            // BG source safety
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostAllowAllBgSources, summary = R.string.boost_allow_all_bg_sources_summary, title = R.string.boost_allow_all_bg_sources_title))
+
+            // Advanced settings sub-screen
+            addPreference(preferenceManager.createPreferenceScreen(context).apply {
+                key = "absorption_smb_advanced"
+                title = rh.gs(app.aaps.core.ui.R.string.advanced_settings_title)
+                addPreference(
+                    AdaptiveIntentPreference(
+                        ctx = context,
+                        intentKey = IntentKey.ApsLinkToDocs,
+                        intent = Intent().apply { action = Intent.ACTION_VIEW; data = rh.gs(R.string.openapsama_link_to_preference_json_doc).toUri() },
+                        summary = R.string.openapsama_link_to_preference_json_doc_txt
+                    )
+                )
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAlwaysUseShortDeltas, summary = R.string.always_use_short_avg_summary, title = R.string.always_use_short_avg))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxDailyMultiplier, dialogMessage = R.string.openapsama_max_daily_safety_multiplier_summary, title = R.string.openapsama_max_daily_safety_multiplier))
+                addPreference(
+                    AdaptiveDoublePreference(
+                        ctx = context,
+                        doubleKey = DoubleKey.ApsMaxCurrentBasalMultiplier,
+                        dialogMessage = R.string.openapsama_current_basal_safety_multiplier_summary,
+                        title = R.string.openapsama_current_basal_safety_multiplier
+                    )
+                )
+            })
+        }
+    }
+}
