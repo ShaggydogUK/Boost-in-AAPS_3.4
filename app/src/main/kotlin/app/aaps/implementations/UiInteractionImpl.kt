@@ -23,6 +23,7 @@ import app.aaps.plugins.main.general.overview.notifications.NotificationWithActi
 import app.aaps.ui.activities.BolusProgressHelperActivity
 import app.aaps.ui.activities.ErrorHelperActivity
 import app.aaps.ui.activities.QuickWizardListActivity
+import app.aaps.ui.activities.TreatmentsActivity
 import app.aaps.ui.activities.TDDStatsActivity
 import app.aaps.ui.dialogs.BolusProgressDialog
 import app.aaps.ui.dialogs.CalibrationDialog
@@ -63,6 +64,7 @@ class UiInteractionImpl @Inject constructor(
     override val preferencesActivity: Class<*> = PreferencesActivity::class.java
     override val myPreferenceFragment: Class<*> = MyPreferenceFragment::class.java
     override val quickWizardListActivity: Class<*> = QuickWizardListActivity::class.java
+    override val treatmentsActivity: Class<*> = TreatmentsActivity::class.java
 
     override val unitsEntries = arrayOf<CharSequence>("mg/dL", "mmol/L")
     override val unitsValues = arrayOf<CharSequence>("mg/dl", "mmol")

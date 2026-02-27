@@ -28,6 +28,7 @@ import app.aaps.core.interfaces.rx.events.EventDismissNotification
 import app.aaps.core.interfaces.rx.events.EventIobCalculationProgress
 import app.aaps.core.interfaces.rx.events.EventNewHistoryData
 import app.aaps.core.interfaces.rx.events.EventNewNotification
+import app.aaps.core.interfaces.rx.events.EventPreferenceChange
 import app.aaps.core.interfaces.rx.events.EventPumpStatusChanged
 import app.aaps.core.interfaces.rx.events.EventUpdateOverviewCalcProgress
 import app.aaps.core.interfaces.ui.UiInteraction
@@ -42,6 +43,7 @@ import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.plugins.main.general.overview.boost.BoostOverviewFragment
 import app.aaps.core.objects.extensions.put
 import app.aaps.core.objects.extensions.store
 import app.aaps.core.validators.preferences.AdaptiveClickPreference
@@ -101,6 +103,7 @@ class OverviewPlugin @Inject constructor(
 
     override fun onStart() {
         super.onStart()
+        updateFragmentClass()
         registerLocalBroadcastReceiver()
         overviewMenus.loadGraphConfig()
         overviewData.initRange()
@@ -133,7 +136,26 @@ class OverviewPlugin @Inject constructor(
             .subscribe({
                            overviewData.pumpStatus = it.getStatus(context)
                        }, fabricPrivacy::logException)
+        disposable += rxBus
+            .toObservable(EventPreferenceChange::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({
+                           if (it.isChanged(BooleanKey.OverviewUseBoostOverview.key))
+                               updateFragmentClass()
+                       }, fabricPrivacy::logException)
 
+    }
+
+    /**
+     * Swap the Overview tab fragment based on the Boost overview preference.
+     * The tab system reads pluginDescription.fragmentClass to determine
+     * which fragment to instantiate, so changing it here is sufficient.
+     */
+    private fun updateFragmentClass() {
+        pluginDescription.fragmentClass = if (preferences.get(BooleanKey.OverviewUseBoostOverview))
+            BoostOverviewFragment::class.qualifiedName
+        else
+            OverviewFragment::class.qualifiedName
     }
 
     override fun onStop() {
@@ -315,6 +337,7 @@ class OverviewPlugin @Inject constructor(
             addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewResetBolusPercentageTime, dialogMessage = R.string.deliver_part_of_boluswizard_reset_time, title = app.aaps.core.ui.R.string.partialboluswizard_reset_time))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseBolusAdvisor, summary = R.string.enable_bolus_advisor_summary, title = R.string.enable_bolus_advisor))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseBolusReminder, summary = R.string.enablebolusreminder_summary, title = R.string.enablebolusreminder))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseBoostOverview, summary = R.string.use_boost_overview_summary, title = R.string.use_boost_overview_title))
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 key = "overview_advanced_settings"
                 title = rh.gs(app.aaps.core.ui.R.string.advanced_settings_title)
