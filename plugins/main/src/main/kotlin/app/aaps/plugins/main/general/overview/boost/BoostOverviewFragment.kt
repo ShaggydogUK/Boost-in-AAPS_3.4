@@ -310,10 +310,46 @@ class BoostOverviewFragment : DaggerFragment(), View.OnClickListener, View.OnLon
         _binding?.bgGraph?.let { graph ->
             graph.setOnLongClickListener(null)
             graph.setOnClickListener(null)
-            graph.removeAllSeries()
+            detachAllSeries(graph)
         }
-        _binding?.iobGraph?.removeAllSeries()
+        _binding?.iobGraph?.let { graph ->
+            detachAllSeries(graph)
+        }
         _binding = null
+    }
+
+    /**
+     * Detach all OverviewData series from a graph to prevent
+     * OverviewDataImpl (singleton) → series.mGraphViews → GraphView → Activity leak chains.
+     *
+     * graph.removeAllSeries() only clears its mSeries list. Series that were attached
+     * via onGraphViewAttached() but removed from mSeries by a race or lifecycle edge case
+     * still hold back-references to the GraphView in their mGraphViews list.
+     * This explicitly detaches every known series from this graph instance.
+     */
+    private fun detachAllSeries(graph: com.jjoe64.graphview.GraphView) {
+        graph.removeAllSeries()
+        // Belt-and-suspenders: explicitly break any stale series → GraphView references
+        // on the OverviewDataImpl singleton. Safe even if the series wasn't attached to this graph.
+        val allSeries = listOf(
+            overviewData.bucketedGraphSeries, overviewData.bgReadingGraphSeries,
+            overviewData.predictionsGraphSeries, overviewData.baseBasalGraphSeries,
+            overviewData.tempBasalGraphSeries, overviewData.basalLineGraphSeries,
+            overviewData.absoluteBasalGraphSeries, overviewData.temporaryTargetSeries,
+            overviewData.runningModesSeries, overviewData.activitySeries,
+            overviewData.activityPredictionSeries, overviewData.epsSeries,
+            overviewData.treatmentsSeries, overviewData.therapyEventSeries,
+            overviewData.iobSeries, overviewData.absIobSeries,
+            overviewData.iobPredictions1Series, overviewData.minusBgiSeries,
+            overviewData.minusBgiHistSeries, overviewData.cobSeries,
+            overviewData.cobMinFailOverSeries, overviewData.deviationsSeries,
+            overviewData.ratioSeries, overviewData.varSensSeries,
+            overviewData.dsMaxSeries, overviewData.dsMinSeries,
+            overviewData.heartRateGraphSeries, overviewData.stepsCountGraphSeries
+        )
+        for (s in allSeries) {
+            (s as? com.jjoe64.graphview.series.Series<*>)?.onGraphViewDetached(graph)
+        }
     }
 
     override fun onDestroy() {
