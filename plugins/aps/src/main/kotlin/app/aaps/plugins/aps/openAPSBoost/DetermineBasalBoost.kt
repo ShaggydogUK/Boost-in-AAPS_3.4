@@ -266,7 +266,7 @@ class DetermineBasalBoost @Inject constructor(
         // ── ISF ──
         consoleError.add("── ISF ─────────────────────────────────────")
         consoleError.add("Profile sens: ${round(profile.sens, 1)} | Variable sens: ${round(profile.variable_sens, 1)} | sensNormalTarget: ${round(profile.sensNormalTarget, 1)}")
-        consoleError.add("DynISF: normalTarget=${profile.normalTarget} | velocity=${profile.dynISFvelocity} | bgCap=${round(profile.dynISFBgCap, 1)} | bgCapped=${profile.dynISFBgCapped}")
+        consoleError.add("DynISF: normalTarget=${convert_bg(profile.normalTarget)} | velocity=${profile.dynISFvelocity} | bgCap=${convert_bg(profile.dynISFBgCap)} | bgCapped=${profile.dynISFBgCapped}")
         if (profile.TDD > 0) consoleError.add("TDD: ${round(profile.TDD, 1)} | ISF from TDD formula")
         else consoleError.add("TDD: not used (profile ISF)")
 

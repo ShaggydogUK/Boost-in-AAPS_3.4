@@ -128,7 +128,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
     // ---- Boost-specific preference getters ----
 
     // Dynamic ISF
-    private val dynIsfNormalTarget; get() = preferences.get(DoubleKey.ApsBoostDynIsfNormalTarget)
+    private val dynIsfNormalTarget; get() = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.ApsBoostDynIsfNormalTarget))
     private val dynIsfVelocity; get() = preferences.get(DoubleKey.ApsBoostDynIsfVelocity) / 100.0
     private val dynIsfBgCap; get() = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.ApsBoostDynIsfBgCap))
 
@@ -811,7 +811,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
         // Check BG vs profile target + offset
         val profile = profileFunction.getProfile() ?: return false
         val profileTarget = profile.getTargetMgdl()
-        val bgOffset = preferences.get(DoubleKey.ApsBoostNightModeBgOffset)
+        val bgOffset = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.ApsBoostNightModeBgOffset))
         return bgCurrent < profileTarget + bgOffset
     }
 
@@ -877,7 +877,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 title = rh.gs(R.string.boost_dynisf_title)
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostUseTdd, summary = R.string.boost_use_tdd_summary, title = R.string.boost_use_tdd_title))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostAdjustSensitivity, summary = R.string.boost_adjust_sensitivity_summary, title = R.string.boost_adjust_sensitivity_title))
-                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostDynIsfNormalTarget, dialogMessage = R.string.boost_dynisf_normal_target_summary, title = R.string.boost_dynisf_normal_target_title))
+                addPreference(AdaptiveUnitPreference(ctx = context, unitKey = UnitDoubleKey.ApsBoostDynIsfNormalTarget, dialogMessage = R.string.boost_dynisf_normal_target_summary, title = R.string.boost_dynisf_normal_target_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostDynIsfVelocity, dialogMessage = R.string.boost_dynisf_velocity_summary, title = R.string.boost_dynisf_velocity_title))
                 addPreference(AdaptiveUnitPreference(ctx = context, unitKey = UnitDoubleKey.ApsBoostDynIsfBgCap, dialogMessage = R.string.boost_dynisf_bg_cap_summary, title = R.string.boost_dynisf_bg_cap_title))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostDynIsfAdjustmentFactor, dialogMessage = R.string.boost_dynisf_adjust_factor_summary, title = R.string.boost_dynisf_adjust_factor_title))
@@ -921,7 +921,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostNightModeEnabled, summary = R.string.boost_night_mode_enabled_summary, title = R.string.boost_night_mode_enabled_title))
                 addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.ApsBoostNightModeStart, dialogMessage = R.string.boost_night_mode_start_summary, title = R.string.boost_night_mode_start_title))
                 addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.ApsBoostNightModeEnd, dialogMessage = R.string.boost_night_mode_end_summary, title = R.string.boost_night_mode_end_title))
-                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostNightModeBgOffset, dialogMessage = R.string.boost_night_mode_bg_offset_summary, title = R.string.boost_night_mode_bg_offset_title))
+                addPreference(AdaptiveUnitPreference(ctx = context, unitKey = UnitDoubleKey.ApsBoostNightModeBgOffset, dialogMessage = R.string.boost_night_mode_bg_offset_summary, title = R.string.boost_night_mode_bg_offset_title))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostNightModeDisableWithCob, summary = R.string.boost_night_mode_disable_with_cob_summary, title = R.string.boost_night_mode_disable_with_cob_title))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostNightModeDisableWithLowTt, summary = R.string.boost_night_mode_disable_with_low_tt_summary, title = R.string.boost_night_mode_disable_with_low_tt_title))
             })
