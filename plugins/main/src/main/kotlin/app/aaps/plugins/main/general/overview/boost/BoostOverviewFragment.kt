@@ -323,6 +323,8 @@ class BoostOverviewFragment : DaggerFragment(), View.OnClickListener, View.OnLon
         refreshLoop = Runnable { refreshAll(); handler.postDelayed(refreshLoop, 60_000L) }
         handler.postDelayed(refreshLoop, 60_000L)
         handler.post { refreshAll() }
+        updatePumpStatus()
+        updateCalcProgress()
     }
 
     override fun onPause() {
