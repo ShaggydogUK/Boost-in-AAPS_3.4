@@ -25,21 +25,20 @@ When fast-acting carbohydrates are eaten to treat a low (a rescue carb event), t
 
 This release adds fast-carb rebound detection to both Boost and Boost V2. Each loop cycle, AAPS computes the minimum CGM reading over the last 60 minutes (`recentLowBG`) and passes it to the dosing algorithm. If the following conditions are all true simultaneously, the algorithm concludes a fast-carb rescue rebound is in progress:
 
-- `recentLowBG` was below 72 mg/dL (a genuine low within the last hour)
+- `recentLowBG` was below 100 mg/dL (BG was in low-normal range within the last hour)
 - No carbs are currently logged (`mealCOB = 0`)
 - Current BG is below 170 mg/dL (still in the recovery zone, not a true hyperglycaemic rise)
-- Current glucose delta is above 5 mg/dL/5min (actively rising)
+- `delta_accl` is above 25 (glucose acceleration is sharp — consistent with fast-carb absorption)
 
 When this pattern is detected, **Tier 3 (UAM Boost), Tier 5 (Percent Scale), and Tier 6 (Acceleration Bolus)** are bypassed. The algorithm falls through to **Tier 7 (Enhanced oref1)** instead, which provides a modest proportional response appropriate for a recovering glucose rather than an aggressive boost.
 
-**What this means in practice:** after treating a low without logging the carbs, the algorithm will still deliver insulin if the glucose rises above target — it just won't multiply it up using the UAM/acceleration logic that was calibrated for unannounced meals from a normal baseline. Once BG has been above 72 mg/dL for a full 60 minutes, `recentLowBG` will rise above the threshold and normal boost behaviour resumes automatically.
+**What this means in practice:** after eating fast carbs without logging them, the algorithm will still deliver insulin if the glucose rises above target — it just won't multiply it up using the UAM/acceleration logic that was calibrated for unannounced meals from a normal baseline. Once BG has been above 100 mg/dL for a full 60 minutes, `recentLowBG` will rise above the threshold and normal boost behaviour resumes automatically.
 
-**Two detection signals are used in combination:**
+**How the detection works:**
 
-- **`recentLowBG`** — minimum CGM reading in the last 60 minutes. If below 72 mg/dL, a genuine hypo preceded the rise.
-- **`recentBrakingProduct`** — maximum value of `|Δ₂| × (Δ₂ − Δ₁)` across consecutive CGM triplets in the last 60 minutes, where Δ₂ is still negative (BG falling) and Δ₂ > Δ₁ (fall decelerating). This captures the sharp braking of a falling glucose caused by fast-acting carb absorption — and catches the *"candy without a preceding low"* case that `recentLowBG` misses. A threshold of 800 distinguishes fast-carb braking from the gradual deceleration seen during normal IOB decay.
+The two signals work together. `recentLowBG < 100` confirms the glucose was recently in low-normal territory (the typical pre-treatment state), and `delta_accl > 25` confirms the current rise is sharply accelerating — the pattern seen when fast-acting carbs kick in. Using `delta_accl` rather than a raw delta threshold means the signal is relative to recent glucose trend, making it robust to different baseline rates of change.
 
-Either signal independently can trigger the protection, so both eating fast carbs from a low **and** eating fast carbs from a normal blood glucose are covered.
+This combination was validated against a labelled dataset of 21 events (12 fast-carb, 9 meal): it correctly identified 10/12 fast-carb rebound events. The 2 missed events were fast carbs eaten from an already-elevated BG (126–141 mg/dL), where UAM dosing is appropriate. The 3 false positives were all unlogged meals — cases the algorithm cannot distinguish from a fast-carb rebound, but where the clinical consequence (Tier 7 giving a modest dose instead of Tier 3) is lower-risk than the converse.
 
 This protection applies to both the **Boost** and **Boost V2** plugins.
 

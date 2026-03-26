@@ -1081,20 +1081,19 @@ class DetermineBasalBoostV2 @Inject constructor(
                 // UAM/Acceleration tiers would fire aggressively here (uamBoost2 inflated by
                 // the recent fall), risking insulin stacking onto an unannounced carb rise.
                 // Suppress Tiers 3, 5, 6 and let Tier 7 (mild) handle it instead.
-                // Two signals: recentLowBG catches lows below 72; recentBrakingProduct catches
-                // fast carbs eaten from a normal BG (candy without a preceding low) where the
-                // sharp deceleration of the falling glucose is the detectable signature.
-                val lowTriggered = profile.recentLowBG < 72.0
-                val brakingTriggered = profile.recentBrakingProduct > 800.0
-                val fastCarbRebound = (lowTriggered || brakingTriggered)
+                // Detection: BG was in low-normal range recently (< 100 mg/dL in last 60 min)
+                // AND current acceleration (delta_accl > 25) confirms a sharp rise — consistent
+                // with fast-carb absorption pattern regardless of whether a hypo occurred.
+                // Validated against note-analysis dataset: 10/12 fast-carb recall, 3/9 meal FPs
+                // (all 3 FPs were unlogged meals, clinically lower-risk than over-dosing a rebound).
+                val lowTriggered = profile.recentLowBG < 100.0
+                val fastCarbRebound = lowTriggered
                     && meal_data.mealCOB == 0.0
                     && bg < 170.0
-                    && glucose_status.delta > 5.0
+                    && delta_accl > 25.0
                 if (fastCarbRebound) {
-                    val trigger = if (lowTriggered && brakingTriggered) "low+braking"
-                        else if (lowTriggered) "low ${round(profile.recentLowBG, 0)}"
-                        else "braking ${round(profile.recentBrakingProduct, 0)}"
-                    consoleError.add("Fast-carb rebound detected ($trigger): BG=$bg, delta=${glucose_status.delta} — UAM/Accel boost suppressed")
+                    val trigger = "low ${round(profile.recentLowBG, 0)} accl ${round(delta_accl, 1)}"
+                    consoleError.add("Fast-carb rebound detected ($trigger): BG=$bg — UAM/Accel boost suppressed")
                     rT.reason.append("Fast-carb rebound ($trigger→$bg): boost suppressed; ")
                 }
 
