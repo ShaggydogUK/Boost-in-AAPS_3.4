@@ -1,6 +1,5 @@
 package app.aaps.plugins.aps.glucagon
 
-import android.content.Context
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceManager
 import androidx.preference.PreferenceScreen
@@ -58,8 +57,7 @@ class GlucagonAlgorithmPlugin @Inject constructor(
     private val activePlugin: ActivePlugin,
     private val profileFunction: ProfileFunction,
     private val persistenceLayer: PersistenceLayer,
-    private val dateUtil: DateUtil,
-    context: Context
+    private val dateUtil: DateUtil
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.GENERAL)
@@ -68,7 +66,7 @@ class GlucagonAlgorithmPlugin @Inject constructor(
         .shortName(R.string.glucagon_plugin_short_name)
         .description(R.string.glucagon_plugin_description)
         .preferencesId(PluginDescription.PREFERENCE_SCREEN),
-    aapsLogger, rh, context
+    aapsLogger, rh
 ) {
 
     private val disposable = CompositeDisposable()

@@ -1,6 +1,5 @@
 package app.aaps.pump.glucagon
 
-import android.content.Context
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.ue.Action
@@ -32,12 +31,11 @@ import javax.inject.Singleton
  */
 @Singleton
 class VirtualGlucagonPump @Inject constructor(
-    private val aapsLogger: AAPSLogger,
+    aapsLogger: AAPSLogger,
     rh: ResourceHelper,
     private val rxBus: RxBus,
     private val persistenceLayer: PersistenceLayer,
-    private val dateUtil: DateUtil,
-    context: Context
+    private val dateUtil: DateUtil
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.GENERAL)
@@ -45,7 +43,7 @@ class VirtualGlucagonPump @Inject constructor(
         .pluginName(R.string.virtual_glucagon_pump_name)
         .shortName(R.string.virtual_glucagon_pump_short_name)
         .description(R.string.virtual_glucagon_pump_description),
-    aapsLogger, rh, context
+    aapsLogger, rh
 ), GlucagonPump {
 
     // Simulated reservoir — 1000 mcg default (configurable via direct field for tests)
