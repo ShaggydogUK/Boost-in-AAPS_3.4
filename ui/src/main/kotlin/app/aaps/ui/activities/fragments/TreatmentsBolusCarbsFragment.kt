@@ -238,9 +238,10 @@ class TreatmentsBolusCarbsFragment : DaggerFragment(), MenuProvider {
                     holder.binding.date.setTextColor(rh.gac(context, app.aaps.core.ui.R.attr.scheduledColor)) else holder.binding.date.setTextColor(holder.binding.carbs.currentTextColor)
                 holder.binding.mealOrCorrection.text =
                     when (ml.bolus.type) {
-                        BS.Type.SMB     -> "SMB"
-                        BS.Type.NORMAL  -> rh.gs(R.string.meal_bolus)
-                        BS.Type.PRIMING -> rh.gs(R.string.prime)
+                        BS.Type.SMB      -> "SMB"
+                        BS.Type.NORMAL   -> rh.gs(R.string.meal_bolus)
+                        BS.Type.PRIMING  -> rh.gs(R.string.prime)
+                        BS.Type.GLUCAGON -> rh.gs(R.string.glucagon_dose)
                     }
                 holder.binding.cbBolusRemove.visibility = (ml.bolus.isValid && actionHelper.isRemoving).toVisibility()
                 if (actionHelper.isRemoving) {
