@@ -31,6 +31,7 @@ data class UserEntry(
         BOLUS_CALCULATOR_RESULT_REMOVED,
         SMB,
         BOLUS_ADVISOR,
+        GLUCAGON_DOSE,
         EXTENDED_BOLUS,
         SUPERBOLUS_TBR,
         CARBS,
@@ -185,6 +186,7 @@ data class UserEntry(
         Medtrum,
         MDI,
         VirtualPump,
+        GlucagonPump,
         Random,
         SMS,                //From SMS plugin
         Treatments,         //From Treatments plugin

@@ -70,6 +70,7 @@ fun UserEntry.Sources.fromDb(): Sources =
         UserEntry.Sources.Medtrum             -> Sources.Medtrum
         UserEntry.Sources.MDI                 -> Sources.MDI
         UserEntry.Sources.VirtualPump         -> Sources.VirtualPump
+        UserEntry.Sources.GlucagonPump        -> Sources.GlucagonPump
         UserEntry.Sources.Random              -> Sources.Random
         UserEntry.Sources.SMS                 -> Sources.SMS
         UserEntry.Sources.Treatments          -> Sources.Treatments
@@ -152,6 +153,7 @@ fun Sources.toDb(): UserEntry.Sources =
         Sources.Medtrum             -> UserEntry.Sources.Medtrum
         Sources.MDI                 -> UserEntry.Sources.MDI
         Sources.VirtualPump         -> UserEntry.Sources.VirtualPump
+        Sources.GlucagonPump        -> UserEntry.Sources.GlucagonPump
         Sources.Random              -> UserEntry.Sources.Random
         Sources.SMS                 -> UserEntry.Sources.SMS
         Sources.Treatments          -> UserEntry.Sources.Treatments
