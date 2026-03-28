@@ -830,7 +830,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
         // Check BG vs profile target + offset
         val profile = profileFunction.getProfile() ?: return false
         val profileTarget = profile.getTargetMgdl()
-        val bgOffset = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.ApsBoostNightModeBgOffset))
+        val bgOffset = profileUtil.convertToMgdl(preferences.get(UnitDoubleKey.ApsBoostNightModeBgOffset), profileUtil.units)
         return bgCurrent < profileTarget + bgOffset
     }
 
