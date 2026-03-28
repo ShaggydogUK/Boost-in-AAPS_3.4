@@ -23,6 +23,7 @@ class TranslatorImpl @Inject internal constructor(
         Action.BOLUS_CALCULATOR_RESULT_REMOVED -> rh.gs(R.string.uel_bolus_calculator)
         Action.SMB                             -> rh.gs(R.string.smb_shortname)
         Action.BOLUS_ADVISOR                   -> rh.gs(R.string.uel_bolus_advisor)
+        Action.GLUCAGON_DOSE                   -> rh.gs(R.string.glucagon_dose)
         Action.EXTENDED_BOLUS                  -> rh.gs(R.string.uel_extended_bolus)
         Action.SUPERBOLUS_TBR                  -> rh.gs(R.string.uel_superbolus_tbr)
         Action.CARBS                           -> rh.gs(R.string.uel_carbs)

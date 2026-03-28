@@ -1010,9 +1010,10 @@ class ComboV2Plugin @Inject constructor(
 
         val requestedBolusAmount = detailedBolusInfo.insulin.iuToCctlBolus()
         val bolusReason = when (detailedBolusInfo.bolusType) {
-            BS.Type.NORMAL  -> ComboCtlPump.StandardBolusReason.NORMAL
-            BS.Type.SMB     -> ComboCtlPump.StandardBolusReason.SUPERBOLUS
-            BS.Type.PRIMING -> ComboCtlPump.StandardBolusReason.PRIMING_INFUSION_SET
+            BS.Type.NORMAL   -> ComboCtlPump.StandardBolusReason.NORMAL
+            BS.Type.SMB      -> ComboCtlPump.StandardBolusReason.SUPERBOLUS
+            BS.Type.PRIMING  -> ComboCtlPump.StandardBolusReason.PRIMING_INFUSION_SET
+            BS.Type.GLUCAGON -> ComboCtlPump.StandardBolusReason.NORMAL  // glucagon never routed to insulin pump
         }
 
         val pumpEnactResult = pumpEnactResultProvider.get()
