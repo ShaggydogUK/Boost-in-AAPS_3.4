@@ -11,8 +11,12 @@ import androidx.preference.SwitchPreference
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.data.model.TT
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
+import app.aaps.core.data.ue.Action
+import app.aaps.core.data.ue.Sources
+import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.aps.APS
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.AutosensResult
@@ -79,6 +83,7 @@ import org.json.JSONObject
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Provider
 import javax.inject.Singleton
@@ -180,6 +185,25 @@ open class OpenAPSBoostV2Plugin @Inject constructor(
     private val activitySteps30; get() = preferences.get(IntKey.ApsBoostActivitySteps30)
     private val activitySteps60; get() = preferences.get(IntKey.ApsBoostActivitySteps60)
     private val activityPct; get() = preferences.get(DoubleKey.ApsBoostActivityPct)
+
+    // Heart rate integration
+    private val hrIntegrationEnabled; get() = preferences.get(BooleanKey.ApsBoostHrIntegrationEnabled)
+    private val hrMaxBpm; get() = preferences.get(IntKey.ApsBoostHrMaxBpm)
+    private val hrRestingBpm; get() = preferences.get(IntKey.ApsBoostHrRestingBpm)
+    private val hrWindowMinutes; get() = preferences.get(IntKey.ApsBoostHrWindowMinutes)
+    private val hrStressDetection; get() = preferences.get(BooleanKey.ApsBoostHrStressDetection)
+
+    // Post-exercise recovery
+    private val postExerciseRecoveryEnabled; get() = preferences.get(BooleanKey.ApsBoostPostExerciseRecoveryEnabled)
+    private val postExerciseRecoveryHours; get() = preferences.get(DoubleKey.ApsBoostPostExerciseRecoveryHours)
+    private val postExerciseRecoveryTarget; get() = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.ApsBoostPostExerciseRecoveryTarget))
+    private val postExerciseRecoveryScale; get() = preferences.get(DoubleKey.ApsBoostPostExerciseRecoveryScale)
+    private val postExerciseMinDuration; get() = preferences.get(IntKey.ApsBoostPostExerciseMinDuration)
+
+    // ---- Post-exercise recovery state ----
+    @Volatile private var recoveryWindowEnd: Long = 0L
+    @Volatile private var wasExerciseActive: Boolean = false
+    @Volatile private var exerciseStartTime: Long = 0L
 
     // ---- Lifecycle ----
 
@@ -372,6 +396,7 @@ open class OpenAPSBoostV2Plugin @Inject constructor(
         val minBg: Double,
         val maxBg: Double,
         val targetBg: Double,
+        val activityState: String = "none",
         val debugReason: String = ""
     )
 
@@ -479,6 +504,7 @@ open class OpenAPSBoostV2Plugin @Inject constructor(
             minBg = activityMinBg,
             maxBg = activityMaxBg,
             targetBg = activityTargetBg,
+            activityState = activityState,
             debugReason = debug.toString()
         )
     }
@@ -587,6 +613,55 @@ open class OpenAPSBoostV2Plugin @Inject constructor(
         // 1. Activity detection & boost time window
         val activityResult = calculateBoostActivity(now, isTempTarget, targetBg, minBg, maxBg, profilePercent)
 
+        // 1b. Post-exercise recovery transition detection
+        if (postExerciseRecoveryEnabled) {
+            val isCurrentlyActive = activityResult.activityState == "ACTIVE"
+            if (isCurrentlyActive && !wasExerciseActive) {
+                // ACTIVE transition: record start time
+                exerciseStartTime = now
+                aapsLogger.debug(LTag.APS, "Boost V2 post-exercise: exercise started at ${dateUtil.dateAndTimeString(exerciseStartTime)}")
+            } else if (!isCurrentlyActive && wasExerciseActive) {
+                // ACTIVE → inactive transition: check duration and trigger recovery
+                val exerciseDurationMin = (now - exerciseStartTime) / 60_000L
+                aapsLogger.debug(LTag.APS, "Boost V2 post-exercise: exercise ended after ${exerciseDurationMin}min (min required: $postExerciseMinDuration)")
+                if (exerciseDurationMin >= postExerciseMinDuration) {
+                    val recoveryMillis = (postExerciseRecoveryHours * 3600_000L).toLong()
+                    recoveryWindowEnd = now + recoveryMillis
+                    aapsLogger.debug(LTag.APS, "Boost V2 post-exercise: recovery window started, ends at ${dateUtil.dateAndTimeString(recoveryWindowEnd)}")
+                    // Insert TempTarget only if none currently active
+                    if (persistenceLayer.getTemporaryTargetActiveAt(now) == null) {
+                        val recoveryTargetMgdl = postExerciseRecoveryTarget
+                        val tt = TT(
+                            timestamp = now,
+                            duration = recoveryMillis,
+                            reason = TT.Reason.ACTIVITY,
+                            lowTarget = recoveryTargetMgdl,
+                            highTarget = recoveryTargetMgdl
+                        )
+                        disposable += persistenceLayer.insertAndCancelCurrentTemporaryTarget(
+                            temporaryTarget = tt,
+                            action = Action.TT,
+                            source = Sources.Aaps,
+                            note = rh.gs(R.string.boost_post_exercise_recovery_title),
+                            listValues = listOf(
+                                ValueWithUnit.TETTReason(TT.Reason.ACTIVITY),
+                                ValueWithUnit.Mgdl(recoveryTargetMgdl),
+                                ValueWithUnit.Minute(TimeUnit.MILLISECONDS.toMinutes(recoveryMillis).toInt())
+                            )
+                        ).subscribe(
+                            { aapsLogger.debug(LTag.APS, "Boost V2 post-exercise: TempTarget inserted (${recoveryTargetMgdl.toInt()} mg/dL for ${TimeUnit.MILLISECONDS.toMinutes(recoveryMillis)}min)") },
+                            { aapsLogger.error(LTag.APS, "Boost V2 post-exercise: failed to insert TempTarget", it) }
+                        )
+                    } else {
+                        aapsLogger.debug(LTag.APS, "Boost V2 post-exercise: TempTarget already active — skipping insert")
+                    }
+                } else {
+                    aapsLogger.debug(LTag.APS, "Boost V2 post-exercise: exercise too brief (${exerciseDurationMin}min < ${postExerciseMinDuration}min) — no recovery")
+                }
+            }
+            wasExerciseActive = isCurrentlyActive
+        }
+
         // 2. Insulin peak / divisor calculation
         val insulin = activePlugin.activeInsulin
         val insulinPeak = insulin.peak.coerceIn(30, 75)
@@ -694,10 +769,18 @@ open class OpenAPSBoostV2Plugin @Inject constructor(
             // Boost SMB fields
             boostActive = activityResult.boostActive,
             profileSwitch = activityResult.profileSwitch,
-            boost_bolus = boostBolus,
+            boost_bolus = if (postExerciseRecoveryEnabled && now < recoveryWindowEnd) {
+                val scaled = boostBolus * postExerciseRecoveryScale
+                aapsLogger.debug(LTag.APS, "Boost V2 post-exercise recovery: boost_bolus scaled from $boostBolus to $scaled")
+                scaled
+            } else boostBolus,
             boost_maxIOB = boostMaxIob,
             Boost_InsulinReq = boostInsulinReqPct,
-            boost_scale = boostScale,
+            boost_scale = if (postExerciseRecoveryEnabled && now < recoveryWindowEnd) {
+                val scaled = boostScale * postExerciseRecoveryScale
+                aapsLogger.debug(LTag.APS, "Boost V2 post-exercise recovery: boost_scale scaled from $boostScale to $scaled")
+                scaled
+            } else boostScale,
             boost_percent_scale = boostPercentScale,
             enableBoostPercentScale = enableBoostPercentScale,
             enableCircadianISF = enableCircadianIsf,
@@ -894,7 +977,8 @@ open class OpenAPSBoostV2Plugin @Inject constructor(
             requiredKey != "boost_settings" &&
             requiredKey != "boost_stepcount_settings" &&
             requiredKey != "boost_night_mode_settings" &&
-            requiredKey != "boost_dynisf_settings"
+            requiredKey != "boost_dynisf_settings" &&
+            requiredKey != "boost_post_exercise_recovery_settings"
         ) return
         val category = PreferenceCategory(context)
         parent.addPreference(category)
@@ -972,6 +1056,17 @@ open class OpenAPSBoostV2Plugin @Inject constructor(
                 addPreference(AdaptiveUnitPreference(ctx = context, unitKey = UnitDoubleKey.ApsBoostNightModeBgOffset, dialogMessage = R.string.boost_night_mode_bg_offset_summary, title = R.string.boost_night_mode_bg_offset_title))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostNightModeDisableWithCob, summary = R.string.boost_night_mode_disable_with_cob_summary, title = R.string.boost_night_mode_disable_with_cob_title))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostNightModeDisableWithLowTt, summary = R.string.boost_night_mode_disable_with_low_tt_summary, title = R.string.boost_night_mode_disable_with_low_tt_title))
+            })
+
+            // Post-Exercise Recovery sub-screen
+            addPreference(preferenceManager.createPreferenceScreen(context).apply {
+                key = "boost_post_exercise_recovery_settings"
+                title = rh.gs(R.string.boost_post_exercise_recovery_title)
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostPostExerciseRecoveryEnabled, summary = R.string.boost_post_exercise_recovery_enabled_summary, title = R.string.boost_post_exercise_recovery_enabled_title))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostPostExerciseRecoveryHours, dialogMessage = R.string.boost_post_exercise_recovery_hours_summary, title = R.string.boost_post_exercise_recovery_hours_title))
+                addPreference(AdaptiveUnitPreference(ctx = context, unitKey = UnitDoubleKey.ApsBoostPostExerciseRecoveryTarget, dialogMessage = R.string.boost_post_exercise_recovery_target_summary, title = R.string.boost_post_exercise_recovery_target_title))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostPostExerciseRecoveryScale, dialogMessage = R.string.boost_post_exercise_recovery_scale_summary, title = R.string.boost_post_exercise_recovery_scale_title))
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostPostExerciseMinDuration, dialogMessage = R.string.boost_post_exercise_min_duration_summary, title = R.string.boost_post_exercise_min_duration_title))
             })
 
             // BG source safety
