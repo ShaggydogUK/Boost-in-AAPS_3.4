@@ -98,7 +98,8 @@ class GlucagonAlgorithmPluginTest : TestBaseWithProfile() {
         whenever(mockApsResult.isCarbsRequired).thenReturn(true)
         whenever(mockApsResult.carbsReq).thenReturn(10)
         whenever(mockApsResult.glucoseStatus).thenReturn(mockGlucoseStatus)
-        whenever(mockApsResult.iobData).thenReturn(arrayOf(IobTotal(dateUtil.now(), iob = 0.5)))
+        val setupNow = dateUtil.now()
+        whenever(mockApsResult.iobData).thenReturn(arrayOf(IobTotal(setupNow, iob = 0.5)))
 
         whenever(mockGlucoseStatus.glucose).thenReturn(80.0)
         whenever(mockGlucoseStatus.delta).thenReturn(-2.0)
@@ -309,8 +310,9 @@ class GlucagonAlgorithmPluginTest : TestBaseWithProfile() {
 
     @Test
     fun `dose is multiple of 25 mcg`() {
+        val now = dateUtil.now()
         whenever(mockApsResult.carbsReq).thenReturn(10)
-        whenever(mockApsResult.iobData).thenReturn(arrayOf(IobTotal(dateUtil.now(), iob = 0.0)))
+        whenever(mockApsResult.iobData).thenReturn(arrayOf(IobTotal(now, iob = 0.0)))
 
         plugin.evaluateAndDoseForTest()
 
@@ -320,8 +322,9 @@ class GlucagonAlgorithmPluginTest : TestBaseWithProfile() {
 
     @Test
     fun `dose minimum is 25 mcg for tiny carbsReq`() {
+        val now = dateUtil.now()
         whenever(mockApsResult.carbsReq).thenReturn(1)   // 1×5=5 mcg → clamp to 25
-        whenever(mockApsResult.iobData).thenReturn(arrayOf(IobTotal(dateUtil.now(), iob = 0.0)))
+        whenever(mockApsResult.iobData).thenReturn(arrayOf(IobTotal(now, iob = 0.0)))
 
         plugin.evaluateAndDoseForTest()
 
@@ -330,8 +333,9 @@ class GlucagonAlgorithmPluginTest : TestBaseWithProfile() {
 
     @Test
     fun `dose is capped at maxSingleDoseMcg`() {
+        val now = dateUtil.now()
         whenever(mockApsResult.carbsReq).thenReturn(100)  // 100×5=500 → clamp to 150
-        whenever(mockApsResult.iobData).thenReturn(arrayOf(IobTotal(dateUtil.now(), iob = 0.0)))
+        whenever(mockApsResult.iobData).thenReturn(arrayOf(IobTotal(now, iob = 0.0)))
 
         plugin.evaluateAndDoseForTest()
 
@@ -342,8 +346,9 @@ class GlucagonAlgorithmPluginTest : TestBaseWithProfile() {
     fun `IOB penalty halves dose when IOB ratio exceeds 1 5`() {
         // Profile: 1 U/h. IOB = 2.0 → ratio = 2.0 → penalty = 0.5
         // carbsReq=20 → baseDose = 100 mcg → penalised raw = 50 → round(50/25)*25 = 50
+        val now = dateUtil.now()
         whenever(mockApsResult.carbsReq).thenReturn(20)
-        whenever(mockApsResult.iobData).thenReturn(arrayOf(IobTotal(dateUtil.now(), iob = 2.0)))
+        whenever(mockApsResult.iobData).thenReturn(arrayOf(IobTotal(now, iob = 2.0)))
 
         plugin.evaluateAndDoseForTest()
 
@@ -354,8 +359,9 @@ class GlucagonAlgorithmPluginTest : TestBaseWithProfile() {
     fun `no IOB penalty when IOB ratio is below 1 5`() {
         // Profile: 1 U/h. IOB = 1.0 → ratio = 1.0 → no penalty
         // carbsReq=20 → baseDose = 100 mcg → no penalty → 100
+        val now = dateUtil.now()
         whenever(mockApsResult.carbsReq).thenReturn(20)
-        whenever(mockApsResult.iobData).thenReturn(arrayOf(IobTotal(dateUtil.now(), iob = 1.0)))
+        whenever(mockApsResult.iobData).thenReturn(arrayOf(IobTotal(now, iob = 1.0)))
 
         plugin.evaluateAndDoseForTest()
 
