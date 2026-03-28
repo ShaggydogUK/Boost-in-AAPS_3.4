@@ -1,5 +1,6 @@
 package app.aaps.plugins.aps.glucagon
 
+import android.content.Context
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceManager
 import androidx.preference.PreferenceScreen
@@ -49,7 +50,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class GlucagonAlgorithmPlugin @Inject constructor(
-    private val aapsLogger: AAPSLogger,
+    aapsLogger: AAPSLogger,
     rh: ResourceHelper,
     private val rxBus: RxBus,
     private val aapsSchedulers: AapsSchedulers,
