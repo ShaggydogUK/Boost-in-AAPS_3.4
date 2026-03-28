@@ -1,0 +1,25 @@
+{
+  "scenario": "08_no_dose_carbs_not_required",
+  "description": "Condition 2 fails: isCarbsRequired=false. APS does not signal an upcoming low. No dose.",
+  "input": {
+    "glucose": 80.0,
+    "delta": -2.0,
+    "shortAvgDelta": -1.5,
+    "carbsRequired": false,
+    "carbsReq": 0,
+    "iob": 0.0,
+    "preferences": {
+      "minBgMgdl": 90,
+      "maxSingleDoseMcg": 150,
+      "minIntervalMinutes": 20,
+      "maxDailyMcg": 900,
+      "halfLifeMinutes": 20,
+      "maxGobMcg": 75
+    },
+    "priorDoses": []
+  },
+  "expected": {
+    "doseMcg": 0.0,
+    "reason": "APS isCarbsRequired=false → no upcoming low predicted"
+  }
+}

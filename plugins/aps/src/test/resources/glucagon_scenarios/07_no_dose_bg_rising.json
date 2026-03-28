@@ -1,0 +1,25 @@
+{
+  "scenario": "07_no_dose_bg_rising",
+  "description": "Condition 4 fails: both delta=+3.0 and shortAvgDelta=+2.0 are positive. Trend is upward; no dose.",
+  "input": {
+    "glucose": 80.0,
+    "delta": 3.0,
+    "shortAvgDelta": 2.0,
+    "carbsRequired": true,
+    "carbsReq": 20,
+    "iob": 0.0,
+    "preferences": {
+      "minBgMgdl": 90,
+      "maxSingleDoseMcg": 150,
+      "minIntervalMinutes": 20,
+      "maxDailyMcg": 900,
+      "halfLifeMinutes": 20,
+      "maxGobMcg": 75
+    },
+    "priorDoses": []
+  },
+  "expected": {
+    "doseMcg": 0.0,
+    "reason": "Both delta=+3.0 and shortAvgDelta=+2.0 positive → BG not falling"
+  }
+}

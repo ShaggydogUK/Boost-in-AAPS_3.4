@@ -1,0 +1,25 @@
+{
+  "scenario": "01_dose_baseline_100mcg",
+  "description": "All 8 conditions pass. carbsReq=20, iob=0.0 (ratio=0, no penalty). baseDose=20×5=100 mcg, rounded to nearest 25 → 100 mcg.",
+  "input": {
+    "glucose": 80.0,
+    "delta": -2.0,
+    "shortAvgDelta": -1.5,
+    "carbsRequired": true,
+    "carbsReq": 20,
+    "iob": 0.0,
+    "preferences": {
+      "minBgMgdl": 90,
+      "maxSingleDoseMcg": 150,
+      "minIntervalMinutes": 20,
+      "maxDailyMcg": 900,
+      "halfLifeMinutes": 20,
+      "maxGobMcg": 75
+    },
+    "priorDoses": []
+  },
+  "expected": {
+    "doseMcg": 100.0,
+    "reason": "carbsReq=20 → baseDose=100 mcg, iobRatio=0.0 < 1.5 → no penalty"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "scenario": "02_dose_50mcg_from_carbs10",
+  "description": "carbsReq=10, iob=0.0. baseDose=10×5=50 mcg → rounds to 50 mcg.",
+  "input": {
+    "glucose": 80.0,
+    "delta": -2.0,
+    "shortAvgDelta": -1.5,
+    "carbsRequired": true,
+    "carbsReq": 10,
+    "iob": 0.0,
+    "preferences": {
+      "minBgMgdl": 90,
+      "maxSingleDoseMcg": 150,
+      "minIntervalMinutes": 20,
+      "maxDailyMcg": 900,
+      "halfLifeMinutes": 20,
+      "maxGobMcg": 75
+    },
+    "priorDoses": []
+  },
+  "expected": {
+    "doseMcg": 50.0,
+    "reason": "carbsReq=10 → baseDose=50 mcg, no IOB penalty"
+  }
+}

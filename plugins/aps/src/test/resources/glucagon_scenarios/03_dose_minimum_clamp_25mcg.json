@@ -1,0 +1,25 @@
+{
+  "scenario": "03_dose_minimum_clamp_25mcg",
+  "description": "carbsReq=1. baseDose=1×5=5 mcg, below 25 mcg minimum → clamped to 25 mcg. After rounding, coerceAtLeast(25) gives 25 mcg.",
+  "input": {
+    "glucose": 80.0,
+    "delta": -2.0,
+    "shortAvgDelta": -1.5,
+    "carbsRequired": true,
+    "carbsReq": 1,
+    "iob": 0.0,
+    "preferences": {
+      "minBgMgdl": 90,
+      "maxSingleDoseMcg": 150,
+      "minIntervalMinutes": 20,
+      "maxDailyMcg": 900,
+      "halfLifeMinutes": 20,
+      "maxGobMcg": 75
+    },
+    "priorDoses": []
+  },
+  "expected": {
+    "doseMcg": 25.0,
+    "reason": "carbsReq=1 → baseDose=5 mcg, clamped to minimum 25 mcg"
+  }
+}
