@@ -80,4 +80,12 @@ enum class IntKey(
     NsClientUrgentAlarmStaleData("ns_alarm_urgent_stale_data_value", 31, 30, 180),
 
     SiteRotationUserProfile("site_rotation_user_profile", 0, 0, 2),
+
+    // Glucagon dosing settings
+    GlucagonMinBgMgdl("glucagon_min_bg_mgdl", 90, 54, 120, dependency = BooleanKey.GlucagonEnabled),
+    GlucagonMaxSingleDoseMcg("glucagon_max_single_dose_mcg", 150, 25, 150, dependency = BooleanKey.GlucagonEnabled),
+    GlucagonMinIntervalMinutes("glucagon_min_interval_min", 20, 5, 60, dependency = BooleanKey.GlucagonEnabled),
+    GlucagonMaxDailyMcg("glucagon_max_daily_mcg", 900, 100, 2000, dependency = BooleanKey.GlucagonEnabled),
+    GlucagonHalfLifeMinutes("glucagon_half_life_min", 20, 10, 60, dependency = BooleanKey.GlucagonEnabled),
+    GlucagonMaxGobMcg("glucagon_max_gob_mcg", 75, 25, 300, dependency = BooleanKey.GlucagonEnabled),
 }

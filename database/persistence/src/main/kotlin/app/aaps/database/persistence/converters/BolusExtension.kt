@@ -39,14 +39,16 @@ fun BS.toDb(): Bolus =
 
 fun Bolus.Type.fromDb(): BS.Type =
     when (this) {
-        Bolus.Type.NORMAL  -> BS.Type.NORMAL
-        Bolus.Type.SMB     -> BS.Type.SMB
-        Bolus.Type.PRIMING -> BS.Type.PRIMING
+        Bolus.Type.NORMAL   -> BS.Type.NORMAL
+        Bolus.Type.SMB      -> BS.Type.SMB
+        Bolus.Type.PRIMING  -> BS.Type.PRIMING
+        Bolus.Type.GLUCAGON -> BS.Type.GLUCAGON
     }
 
 fun BS.Type.toDb(): Bolus.Type =
     when (this) {
-        BS.Type.NORMAL  -> Bolus.Type.NORMAL
-        BS.Type.SMB     -> Bolus.Type.SMB
-        BS.Type.PRIMING -> Bolus.Type.PRIMING
+        BS.Type.NORMAL   -> Bolus.Type.NORMAL
+        BS.Type.SMB      -> Bolus.Type.SMB
+        BS.Type.PRIMING  -> Bolus.Type.PRIMING
+        BS.Type.GLUCAGON -> Bolus.Type.GLUCAGON
     }

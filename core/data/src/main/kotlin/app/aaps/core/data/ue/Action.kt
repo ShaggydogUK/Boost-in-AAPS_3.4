@@ -6,6 +6,7 @@ enum class Action(val colorGroup: ColorGroup) {
     BOLUS_CALCULATOR_RESULT_REMOVED(ColorGroup.Aaps),
     SMB(ColorGroup.InsulinTreatment),
     BOLUS_ADVISOR(ColorGroup.InsulinTreatment),
+    GLUCAGON_DOSE(ColorGroup.InsulinTreatment),
     EXTENDED_BOLUS(ColorGroup.InsulinTreatment),
     SUPERBOLUS_TBR(ColorGroup.InsulinTreatment),
     CARBS(ColorGroup.CarbTreatment),

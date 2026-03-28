@@ -52,6 +52,8 @@ data class Bolus(
     enum class Type {
         NORMAL,
         SMB,
-        PRIMING;
+        PRIMING,
+        /** Glucagon microdose. amount in mg (1.0 = 1 mg = 1000 mcg). Excluded from IOB calculations. */
+        GLUCAGON;
     }
 }

@@ -66,6 +66,7 @@ enum class Sources {
     Medtrum,
     MDI,
     VirtualPump,
+    GlucagonPump,
     Random,
     SMS,                //From SMS plugin
     Treatments,         //From Treatments plugin

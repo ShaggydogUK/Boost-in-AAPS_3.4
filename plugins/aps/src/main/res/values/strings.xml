@@ -305,4 +305,24 @@
     <string name="openapsama_iob_threshold_percent_summary" formatted="false">Percentage of maxIOB above which SMBs are disabled.\nDefault value: 100%\nWith 100% this feature is effectively disabled.</string>
     <string name="openapsama_iob_threshold_percent">maxIOB threshold percent for SMB\n(iob_threshold_percent)</string>
 
+    <!-- Glucagon algorithm plugin -->
+    <string name="glucagon_plugin_name">Glucagon Algorithm</string>
+    <string name="glucagon_plugin_short_name">Glucagon</string>
+    <string name="glucagon_plugin_description">Bihormonal closed-loop glucagon dosing. Delivers glucagon microdoses via a second pump to prevent hypoglycaemia when oref1 predicts an upcoming low. Disabled by default — requires explicit configuration and an active glucagon pump plugin.</string>
+    <string name="glucagon_settings_category">Glucagon Settings</string>
+    <string name="glucagon_enabled_title">Enable Glucagon Dosing</string>
+    <string name="glucagon_enabled_summary">Allow automatic glucagon microdoses when upcoming hypoglycaemia is predicted. Requires a glucagon pump plugin to be enabled.</string>
+    <string name="glucagon_min_bg_title">Min BG for glucagon (mg/dL)</string>
+    <string name="glucagon_min_bg_summary">Current BG must be at or below this value before a dose is considered. Default: 90 mg/dL.</string>
+    <string name="glucagon_max_single_dose_title">Max single dose (mcg)</string>
+    <string name="glucagon_max_single_dose_summary">Maximum glucagon dose per delivery. Default: 150 mcg. Reduce if using less concentrated glucagon.</string>
+    <string name="glucagon_min_interval_title">Min interval between doses (min)</string>
+    <string name="glucagon_min_interval_summary">Minimum time between consecutive glucagon doses. Default: 20 min.</string>
+    <string name="glucagon_max_daily_title">Daily hard cap (mcg)</string>
+    <string name="glucagon_max_daily_summary">Hard limit on total glucagon per day. Doses are blocked once this is reached. Default: 900 mcg.</string>
+    <string name="glucagon_half_life_title">GOB half-life (min)</string>
+    <string name="glucagon_half_life_summary">Glucagon on-board decay half-life for GOB calculation. Default: 20 min (matches subcutaneous PK).</string>
+    <string name="glucagon_max_gob_title">Max GOB before blocking dose (mcg)</string>
+    <string name="glucagon_max_gob_summary">If Glucagon On Board exceeds this value, no new dose is delivered. Default: 75 mcg.</string>
+
 </resources>

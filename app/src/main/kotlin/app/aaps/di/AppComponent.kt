@@ -30,6 +30,7 @@ import app.aaps.pump.medtronic.di.MedtronicModule
 import app.aaps.pump.medtrum.di.MedtrumModule
 import app.aaps.pump.omnipod.dash.di.OmnipodDashModule
 import app.aaps.pump.omnipod.eros.di.OmnipodErosModule
+import app.aaps.pump.glucagon.di.GlucagonPumpModule
 import app.aaps.pump.virtual.di.VirtualPumpModule
 import app.aaps.shared.impl.di.LoggerModule
 import app.aaps.shared.impl.di.SharedImplModule
@@ -88,7 +89,8 @@ import javax.inject.Singleton
         RileyLinkModule::class,
         MedtrumModule::class,
         EquilModule::class,
-        VirtualPumpModule::class
+        VirtualPumpModule::class,
+        GlucagonPumpModule::class
     ]
 )
 interface AppComponent : AndroidInjector<MainApp> {

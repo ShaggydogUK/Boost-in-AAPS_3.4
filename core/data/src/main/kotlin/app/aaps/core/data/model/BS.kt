@@ -36,7 +36,9 @@ data class BS(
     enum class Type {
         NORMAL,
         SMB,
-        PRIMING;
+        PRIMING,
+        /** Glucagon microdose delivered by glucagon pump. amount field stores dose in mg (1.0 = 1 mg = 1000 mcg). Excluded from IOB calculations. */
+        GLUCAGON;
 
         companion object {
 
