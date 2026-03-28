@@ -81,6 +81,9 @@ class GlucagonAlgorithmPlugin @Inject constructor(
             .subscribe({ evaluateAndDose() }, { aapsLogger.error(LTag.APS, "Glucagon event error", it) })
     }
 
+    /** Exposed for unit tests — do not call from production code. */
+    internal fun evaluateAndDoseForTest() = evaluateAndDose()
+
     override fun onStop() {
         disposable.clear()
         super.onStop()
