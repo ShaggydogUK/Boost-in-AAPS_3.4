@@ -71,6 +71,8 @@
     <string name="boost_sleep_in_steps_summary">Steps/hour below which user is considered still sleeping. Default: 250</string>
     <string name="boost_activity_steps_5_title">5-Minute Activity Steps</string>
     <string name="boost_activity_steps_5_summary">Steps in 5 min above which user is active. Default: 420</string>
+    <string name="boost_activity_steps_15_title">15-Minute Activity Steps</string>
+    <string name="boost_activity_steps_15_summary">Steps in 15 min above which user is active. Default: 800</string>
     <string name="boost_activity_steps_30_title">30-Minute Activity Steps</string>
     <string name="boost_activity_steps_30_summary">Steps in 30 min above which user is active. Default: 1200</string>
     <string name="boost_activity_steps_60_title">60-Minute Activity Steps</string>

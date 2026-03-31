@@ -182,6 +182,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
     private val inactivityPct; get() = preferences.get(DoubleKey.ApsBoostInactivityPct)
     private val sleepInSteps; get() = preferences.get(IntKey.ApsBoostSleepInSteps)
     private val activitySteps5; get() = preferences.get(IntKey.ApsBoostActivitySteps5)
+    private val activitySteps15; get() = preferences.get(IntKey.ApsBoostActivitySteps15)
     private val activitySteps30; get() = preferences.get(IntKey.ApsBoostActivitySteps30)
     private val activitySteps60; get() = preferences.get(IntKey.ApsBoostActivitySteps60)
     private val activityPct; get() = preferences.get(DoubleKey.ApsBoostActivityPct)
@@ -468,9 +469,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
         if (boostActive) {
             val activityBgTarget = 150.0
             val isActive = recentSteps5Min > activitySteps5
+                || recentSteps15Min > activitySteps15
                 || recentSteps30Min > activitySteps30
                 || recentSteps60Min > activitySteps60
-                || (recentSteps5Min < activitySteps5 && recentSteps15Min > activitySteps5)
 
             // ---- HR-augmented classification (opt-in, additive only) ----
             val hrClassification: HrActivityCalculator.HrClassificationResult? =
@@ -1178,6 +1179,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostSleepInHours, dialogMessage = R.string.boost_sleep_in_hrs_summary, title = R.string.boost_sleep_in_hrs_title))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostSleepInSteps, dialogMessage = R.string.boost_sleep_in_steps_summary, title = R.string.boost_sleep_in_steps_title))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostActivitySteps5, dialogMessage = R.string.boost_activity_steps_5_summary, title = R.string.boost_activity_steps_5_title))
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostActivitySteps15, dialogMessage = R.string.boost_activity_steps_15_summary, title = R.string.boost_activity_steps_15_title))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostActivitySteps30, dialogMessage = R.string.boost_activity_steps_30_summary, title = R.string.boost_activity_steps_30_title))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostActivitySteps60, dialogMessage = R.string.boost_activity_steps_60_summary, title = R.string.boost_activity_steps_60_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostActivityPct, dialogMessage = R.string.boost_activity_pct_summary, title = R.string.boost_activity_pct_title))

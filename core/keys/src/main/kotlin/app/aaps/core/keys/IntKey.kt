@@ -60,6 +60,7 @@ enum class IntKey(
     ApsBoostInactivitySteps("boost_inactivity_steps", 500, 1, 1000, defaultedBySM = true),
     ApsBoostSleepInSteps("boost_sleep_in_steps", 250, 1, 1000, defaultedBySM = true),
     ApsBoostActivitySteps5("boost_activity_steps_5", 420, 1, 5000, defaultedBySM = true),
+    ApsBoostActivitySteps15("boost_activity_steps_15", 800, 1, 10000, defaultedBySM = true),
     ApsBoostActivitySteps30("boost_activity_steps_30", 1200, 1, 10000, defaultedBySM = true),
     ApsBoostActivitySteps60("boost_activity_steps_60", 1800, 1, 10000, defaultedBySM = true),
     ApsBoostDynIsfAdjustmentFactor("DynISFAdjust", 100, 1, 300),
