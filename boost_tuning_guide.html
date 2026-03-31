@@ -365,6 +365,165 @@
     color: #334155;
   }
 
+  /* ── Scenario cards ───────────────────────────────────────── */
+  .scenario-section-header {
+    text-align: center;
+    margin: 48px 0 28px;
+    max-width: 1200px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .scenario-section-header h2 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #fff;
+  }
+  .scenario-section-header h2 span { color: #6ee7b7; }
+  .scenario-section-header p {
+    font-size: 0.85rem;
+    color: #64748b;
+    margin-top: 6px;
+  }
+
+  .scenario-card {
+    max-width: 1200px;
+    margin: 0 auto 20px;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid;
+  }
+  .scenario-card.hypo  { border-color: #7f1d1d; }
+  .scenario-card.plateau { border-color: #78350f; }
+  .scenario-card.stuck   { border-color: #1e3a5f; }
+
+  .scenario-banner {
+    padding: 18px 24px;
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .scenario-card.hypo    .scenario-banner { background: #1c0505; }
+  .scenario-card.plateau .scenario-banner { background: #1c0f00; }
+  .scenario-card.stuck   .scenario-banner { background: #040d1c; }
+
+  .scenario-icon {
+    font-size: 1.8rem;
+    flex-shrink: 0;
+    line-height: 1;
+    margin-top: 2px;
+  }
+  .scenario-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 4px;
+  }
+  .scenario-card.hypo    .scenario-title { color: #fca5a5; }
+  .scenario-card.plateau .scenario-title { color: #fcd34d; }
+  .scenario-card.stuck   .scenario-title { color: #93c5fd; }
+
+  .scenario-subtitle {
+    font-size: 0.8rem;
+    color: #64748b;
+    line-height: 1.4;
+  }
+
+  .scenario-body {
+    background: #1e293b;
+    padding: 20px 24px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+  }
+
+  .scenario-col-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #2d3748;
+  }
+  .col-mechanism .scenario-col-title { color: #94a3b8; }
+  .col-fix       .scenario-col-title { color: #6ee7b7; }
+  .col-avoid     .scenario-col-title { color: #f97316; }
+
+  .mechanism-text {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    line-height: 1.6;
+  }
+  .mechanism-text b { color: #cbd5e1; }
+
+  .fix-list {
+    list-style: none;
+    padding: 0;
+  }
+  .fix-list li {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    padding: 5px 0 5px 14px;
+    position: relative;
+    border-bottom: 1px solid #1e293b;
+    line-height: 1.4;
+  }
+  .fix-list li:last-child { border-bottom: none; }
+  .fix-list li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: #6ee7b7;
+    font-weight: 700;
+  }
+  .fix-list li b { color: #f1f5f9; }
+  .fix-list li .fix-val {
+    display: inline-block;
+    margin-top: 3px;
+    font-family: monospace;
+    font-size: 0.72rem;
+    background: #0f1117;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    padding: 1px 6px;
+    color: #6ee7b7;
+  }
+  .fix-priority {
+    display: inline-block;
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-left: 4px;
+    vertical-align: middle;
+    background: #064e3b;
+    color: #34d399;
+    border: 1px solid #059669;
+  }
+
+  .avoid-list {
+    list-style: none;
+    padding: 0;
+  }
+  .avoid-list li {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    padding: 5px 0 5px 14px;
+    position: relative;
+    border-bottom: 1px solid #1e293b;
+    line-height: 1.4;
+  }
+  .avoid-list li:last-child { border-bottom: none; }
+  .avoid-list li::before {
+    content: '✕';
+    position: absolute;
+    left: 0;
+    color: #f87171;
+    font-weight: 700;
+    font-size: 0.7rem;
+  }
+  .avoid-list li b { color: #fca5a5; }
+
   /* Helper */
   .mt8  { margin-top: 8px; }
   .mt12 { margin-top: 12px; }
@@ -947,6 +1106,243 @@
 
   <div class="v2-diff">
     <b>Boost V2 differences to keep in mind:</b> V2 uses TDD² in its ISF formula — it is <b>more sensitive to TDD changes</b> than V1 and reacts more strongly to short-term variations. BG Velocity is always 100% in V2 and cannot be reduced. Start with conservative delivery settings (lower Scale, lower Max IOB) when switching to V2.
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  SCENARIO GUIDES                                           -->
+<!-- ══════════════════════════════════════════════════════════ -->
+
+<div class="scenario-section-header">
+  <h2>Common <span>Scenario Guides</span></h2>
+  <p>Specific settings responses to real-world control problems — start with the highest-priority fixes first</p>
+</div>
+
+
+<!-- ── SCENARIO 1: Hypos after food ── -->
+<div class="scenario-card hypo">
+  <div class="scenario-banner">
+    <div class="scenario-icon">📉</div>
+    <div>
+      <div class="scenario-title">Scenario 1 — Too many hypos in response to food</div>
+      <div class="scenario-subtitle">BG drops low after meals, often 2–3 hours post-eating. Boost appears to be delivering too much insulin around carb absorption.</div>
+    </div>
+  </div>
+  <div class="scenario-body">
+
+    <div class="col-mechanism">
+      <div class="scenario-col-title">What is likely happening</div>
+      <div class="mechanism-text">
+        Boost's COB tiers (Tier 1 &lt;25 min, Tier 2 &lt;40 min) deliver insulin proportional to <b>insulinReq</b>, which is driven by current ISF and the gap between BG and target. If ISF is tuned aggressively or insulinReqPct is high, these tiers stack significant insulin on top of the meal bolus.
+        <br><br>
+        If the profile <b>ISF is too low</b> (number too small), the algorithm overestimates how much insulin is needed per mg/dL correction. Combined with a large Max IOB headroom, this allows continued stacking well into absorption.
+        <br><br>
+        Boost's <b>Fast Carb Protection</b> reduces aggressiveness when a recent low + fast rise is detected, but it cannot fire if the hypo itself is triggered by the overcorrection — the protection is for pre-emptive fast carb scenarios, not post-delivery correction.
+      </div>
+    </div>
+
+    <div class="col-fix">
+      <div class="scenario-col-title">Settings to change</div>
+      <ul class="fix-list">
+        <li>
+          <b>Insulin Required %</b> <span class="fix-priority">first</span><br>
+          Reduce to 35–40%. This directly scales how much of the calculated need is acted on during COB tiers.
+          <div class="fix-val">ApsBoostInsulinReqPct → 35–40%</div>
+        </li>
+        <li>
+          <b>Max IOB</b> <span class="fix-priority">first</span><br>
+          Lower to 0.5–0.8 U. When IOB exceeds this, Boost falls back to oref1 — this prevents stacking beyond a safe ceiling.
+          <div class="fix-val">ApsBoostMaxIob → 0.5–0.8 U</div>
+        </li>
+        <li>
+          <b>Bolus Cap</b><br>
+          Reduce to 1.0–1.5 U as a hard ceiling on any single SMB delivery.
+          <div class="fix-val">ApsBoostBolus → 1.0–1.5 U</div>
+        </li>
+        <li>
+          <b>Boost Scale</b><br>
+          If hypos persist after the above, reduce scale to 0.7–0.8. This reduces the Tier 3+ UAM bolus magnitude.
+          <div class="fix-val">ApsBoostScale → 0.7–0.8</div>
+        </li>
+        <li>
+          <b>Profile ISF</b> (outside Boost settings)<br>
+          Verify ISF is not too low (too aggressive). A too-low ISF means insulinReq is overestimated at every step. Fasting basal testing first, then ISF.
+        </li>
+        <li>
+          <b>Profile CR</b> (outside Boost settings)<br>
+          A too-low CR (too aggressive) means the pre-meal bolus already overdoses before Boost fires. Check CR separately from Boost.
+        </li>
+      </ul>
+    </div>
+
+    <div class="col-avoid">
+      <div class="scenario-col-title">What not to do</div>
+      <ul class="avoid-list">
+        <li><b>Don't set Scale ≥ 3.0</b> to disable Boost as your first response — you lose all Boost benefit and revert to standard oref1 which may have worse meal coverage.</li>
+        <li><b>Don't raise the DynISF Normal Target</b> as a first fix — this makes ISF less aggressive at a given BG but doesn't address the stacking behaviour during COB tiers.</li>
+        <li><b>Don't extend Night Mode hours</b> into the day to suppress post-meal SMBs — this is a blunt instrument that will block needed corrections at other times.</li>
+        <li><b>Don't reduce smbBasalMinutes</b> in isolation — this only limits per-SMB size; if ISF is wrong, the algorithm will just deliver more frequent small SMBs instead.</li>
+        <li><b>Don't ignore profile calibration</b> — Boost amplifies what the profile tells it. A miscalibrated ISF or CR will always produce bad meal outcomes regardless of Boost settings.</li>
+      </ul>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ── SCENARIO 2: High plateaus after meals ── -->
+<div class="scenario-card plateau">
+  <div class="scenario-banner">
+    <div class="scenario-icon">📊</div>
+    <div>
+      <div class="scenario-title">Scenario 2 — High plateaus after meals</div>
+      <div class="scenario-subtitle">BG rises after eating and stays elevated for 2+ hours before slowly falling. Boost does not appear to be delivering enough to bring BG back to target.</div>
+    </div>
+  </div>
+  <div class="scenario-body">
+
+    <div class="col-mechanism">
+      <div class="scenario-col-title">What is likely happening</div>
+      <div class="mechanism-text">
+        The algorithm is calculating an insulinReq but delivering only a fraction of it — either because <b>insulinReqPct is low</b>, or because <b>Max IOB is hit quickly</b> and Boost falls back to oref1 which delivers standard corrections.
+        <br><br>
+        During a post-meal plateau where BG is stable but high (flat delta), Boost uses <b>Tier 7 (mild correction)</b> or standard oref1 logic rather than the more aggressive UAM tiers, because acceleration signals are gone. The correction speed is then entirely governed by ISF and Max IOB headroom.
+        <br><br>
+        If <b>Percent Scaling is disabled</b>, the rising 108–180 mg/dL window never gets the amplified SMB it's designed to handle. Enabling this is specifically designed for this pattern.
+        <br><br>
+        A <b>too-high ISF</b> (conservative number) underestimates insulinReq — each SMB chips away slowly. Verify ISF is accurate for corrections.
+      </div>
+    </div>
+
+    <div class="col-fix">
+      <div class="scenario-col-title">Settings to change</div>
+      <ul class="fix-list">
+        <li>
+          <b>Verify Boost time window</b> <span class="fix-priority">first</span><br>
+          Confirm the window covers your meal times. The default (07:00–07:01) is essentially disabled. If Boost isn't active, you're on standard oref1 only.
+          <div class="fix-val">ApsBoostStartTime / ApsBoostEndTime</div>
+        </li>
+        <li>
+          <b>Max IOB</b> <span class="fix-priority">first</span><br>
+          Raise to 2.0–3.0 U. A low Max IOB ceiling is the most common reason Boost stops correcting early — check the loop graph for IOB hitting the ceiling.
+          <div class="fix-val">ApsBoostMaxIob → 2.0–3.0 U</div>
+        </li>
+        <li>
+          <b>Enable Percent Scaling</b><br>
+          Specifically designed for BG in the 108–180 rising range. Set Percent Scale Factor to 200–300% to amplify SMBs as BG rises through this band.
+          <div class="fix-val">ApsBoostEnablePercentScale → ON</div>
+          <div class="fix-val">ApsBoostPercentScale → 200–300%</div>
+        </li>
+        <li>
+          <b>Insulin Required %</b><br>
+          Raise to 70–80%. Delivers more of the calculated need per loop cycle rather than a conservative fraction.
+          <div class="fix-val">ApsBoostInsulinReqPct → 70–80%</div>
+        </li>
+        <li>
+          <b>maxSMBBasalMinutes</b><br>
+          Raise to 60 min. This increases the per-SMB ceiling, allowing larger individual corrections when insulinReq warrants it.
+          <div class="fix-val">maxSMBBasalMinutes → 60 min</div>
+        </li>
+        <li>
+          <b>DynISF Normal Target</b><br>
+          Lower from 99 to 90 mg/dL. This makes the ISF formula produce a stronger (lower) ISF value, increasing insulinReq for a given BG gap.
+          <div class="fix-val">ApsBoostDynIsfNormalTarget → 90 mg/dL</div>
+        </li>
+      </ul>
+    </div>
+
+    <div class="col-avoid">
+      <div class="scenario-col-title">What not to do</div>
+      <ul class="avoid-list">
+        <li><b>Don't raise Boost Scale above 2.0</b> before verifying Max IOB and Insulin Required % are correct — scale amplifies Tier 3+ UAM boluses but has little effect on plateau corrections where acceleration is flat.</li>
+        <li><b>Don't rely on Scale alone</b> for plateaus — scale primarily affects the fast-rise UAM tiers. Once BG is flat and high, the plateau is corrected by ISF and IOB headroom, not scale.</li>
+        <li><b>Don't raise TDD Adjustment Factor aggressively</b> (e.g. 200%+) to force stronger ISF — this distorts the Dynamic ISF calculation away from your actual insulin needs and can create instability.</li>
+        <li><b>Don't ignore Boost time window</b> — it's the most common reason Boost appears not to be working. Verify in the AAPS loop view that the plugin shows "BOOST ACTIVE".</li>
+        <li><b>Don't tighten CR</b> to compensate for post-meal plateaus — if Boost is active and adequately configured, a tight CR risks pre-meal overdose. Correct the loop behaviour first.</li>
+      </ul>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ── SCENARIO 3: Always stuck above target ── -->
+<div class="scenario-card stuck">
+  <div class="scenario-banner">
+    <div class="scenario-icon">🎯</div>
+    <div>
+      <div class="scenario-title">Scenario 3 — Always getting stuck above target</div>
+      <div class="scenario-subtitle">BG sits persistently above target even between meals, or returns to target only briefly. Not specifically meal-related — happens throughout the day.</div>
+    </div>
+  </div>
+  <div class="scenario-body">
+
+    <div class="col-mechanism">
+      <div class="scenario-col-title">What is likely happening</div>
+      <div class="mechanism-text">
+        Persistent above-target BG between meals usually signals a <b>profile calibration problem</b> rather than a Boost tuning problem. The algorithm can only correct what the profile's ISF and basal allow it to correct.
+        <br><br>
+        If <b>TDD-based ISF is disabled</b>, Boost uses the profile ISF directly. If that ISF is too conservative (too high a number), every correction is undersized. Dynamic ISF's purpose is to adapt — without it, the algorithm is no better than standard oref1.
+        <br><br>
+        <b>Night Mode or inactivity suppression</b> may be blocking corrections during parts of the day where BG is chronically high. If these features fire during waking hours, they prevent SMBs when they're most needed.
+        <br><br>
+        A <b>too-low Max IOB</b> hits the ceiling quickly during sustained correction periods. Autosens will attempt to compensate but is bounded by its min/max ratio limits.
+      </div>
+    </div>
+
+    <div class="col-fix">
+      <div class="scenario-col-title">Settings to change</div>
+      <ul class="fix-list">
+        <li>
+          <b>Enable TDD-based ISF</b> <span class="fix-priority">first</span><br>
+          If not already on, this is the most impactful change. Boost's Dynamic ISF is the core mechanism for adapting corrections to your actual insulin needs.
+          <div class="fix-val">ApsBoostUseTdd → ON</div>
+        </li>
+        <li>
+          <b>Verify Boost time window</b> <span class="fix-priority">first</span><br>
+          Confirm Boost is active during the problem periods. Check the AAPS loop graph — the plugin label should show "BOOST" not "SMB".
+          <div class="fix-val">ApsBoostStartTime / ApsBoostEndTime</div>
+        </li>
+        <li>
+          <b>Max IOB</b><br>
+          Raise to 2.0–3.0 U. Persistent highs often mean the algorithm is trying to correct but hitting the IOB ceiling and backing off. Check the loop graph for this pattern.
+          <div class="fix-val">ApsBoostMaxIob → 2.0–3.0 U</div>
+        </li>
+        <li>
+          <b>DynISF Normal Target</b><br>
+          Lower from 99 to 90–95 mg/dL to make the ISF formula produce stronger corrections at elevated BG.
+          <div class="fix-val">ApsBoostDynIsfNormalTarget → 90–95 mg/dL</div>
+        </li>
+        <li>
+          <b>Review Night Mode &amp; Inactivity settings</b><br>
+          Confirm Night Mode hours do not overlap with when you are awake and high. Check that inactivity % is not suppressing insulin during sedentary work hours when BG is elevated.
+          <div class="fix-val">ApsBoostNightModeStart / End — check overlap</div>
+          <div class="fix-val">ApsBoostInactivityPct → reduce if needed</div>
+        </li>
+        <li>
+          <b>Enable Low TT Lowers Sensitivity</b><br>
+          When you deliberately set a correction temp target, this makes the algorithm more aggressive. Useful for managing persistent highs intentionally.
+          <div class="fix-val">ApsAutoIsfLowTtLowersSens → ON</div>
+        </li>
+        <li>
+          <b>Profile basal and ISF</b> (outside Boost settings)<br>
+          Persistent above-target BG is often a signal that the profile basal or ISF is fundamentally too conservative. Autosens will show a persistent ratio &gt; 1.0 if it's trying to compensate. Address the root cause in the profile.
+        </li>
+      </ul>
+    </div>
+
+    <div class="col-avoid">
+      <div class="scenario-col-title">What not to do</div>
+      <ul class="avoid-list">
+        <li><b>Don't raise TDD Adjustment Factor above 150%</b> as a workaround for poor profile calibration — this forces the ISF formula to behave as if you use far more insulin than you do, creating instability and potential hypo risk when your real TDD is used.</li>
+        <li><b>Don't raise Boost Scale to near 3.0</b> — high scale inflates UAM bolus tiers but has minimal effect on persistent between-meal highs where BG is flat. It also increases hypo risk when you eventually come back on target.</li>
+        <li><b>Don't ignore autosens ratio</b> — if autosens is sitting persistently at its maximum (e.g. 1.2), it's hitting its ceiling trying to compensate for a miscalibrated profile. Widening autosens limits is not the fix; correcting the profile is.</li>
+        <li><b>Don't set a high BG target in the profile</b> to "avoid lows" — if the profile target is 130+ mg/dL, the algorithm will never drive BG below that regardless of settings. Set a correct target and use night mode for overnight protection instead.</li>
+        <li><b>Don't increase Bolus Cap</b> to try to force larger corrections — between-meal corrections are limited by insulinReq (ISF × BG gap), not bolus cap. Bolus cap only limits the ceiling; if insulinReq is already below the cap, raising the cap does nothing.</li>
+      </ul>
+    </div>
+
   </div>
 </div>
 
