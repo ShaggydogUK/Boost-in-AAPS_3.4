@@ -1210,9 +1210,9 @@ function calcAll(inp) {
     !(inp.nightModeCob && inp.cob > 0);
 
   // ── Derived dynamics (for tier decision tree) ─────────────
-  // mirrors DetermineBasalBoost.kt lines 235-237
+  // mirrors DetermineBasalBoost.kt — denominator floored at 2.0 to prevent near-zero amplification
   const delta_accl = Math.abs(inp.shortAvgDelta) > 0.001
-    ? Math.round(100 * (inp.delta - inp.shortAvgDelta) / Math.abs(inp.shortAvgDelta) * 100) / 100
+    ? Math.round(100 * (inp.delta - inp.shortAvgDelta) / Math.max(Math.abs(inp.shortAvgDelta), 2.0) * 100) / 100
     : 0;
   const uamBoost1 = Math.abs(inp.shortAvgDelta) > 0.001 ? inp.delta / inp.shortAvgDelta : 0;
   const uamBoost2 = Math.abs(inp.longAvgDelta) > 0.001 ? Math.abs(inp.delta / inp.longAvgDelta) : 0;
