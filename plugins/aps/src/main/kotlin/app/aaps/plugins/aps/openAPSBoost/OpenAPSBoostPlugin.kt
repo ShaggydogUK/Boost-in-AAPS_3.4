@@ -805,8 +805,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
         val insulinDivisor = if (insulinPeak < 60) (90 - insulinPeak) + 30 else (90 - insulinPeak) + 40
 
         // 3. ISF pre-calculation
+        // Profile switch inversely scales ISF: 80% profile → 125% ISF (more sensitive),
+        // 120% profile → 83% ISF (more resistant).
         val profileScale = activityResult.profileSwitch.toDouble() / 100.0
-        val scaledProfileSens = profile.getIsfMgdl("OpenAPSBoostPlugin") * profileScale
+        val scaledProfileSens = profile.getIsfMgdl("OpenAPSBoostPlugin") / profileScale
         val isfResult = calculateBoostIsf(
             profileSens = scaledProfileSens,
             profilePercent = activityResult.profileSwitch,

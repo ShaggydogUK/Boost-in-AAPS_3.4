@@ -122,6 +122,16 @@ The user's configured settings always serve as the baseline for moderate/unclass
 
 ---
 
+### Enhanced Exercise Management
+
+Several improvements to how Boost detects and responds to exercise:
+
+**15-minute activity detection:** Exercise detection now includes a dedicated 15-minute step threshold (`ApsBoostActivitySteps15`, default 800 steps). Previously, detection jumped from a 5-minute window directly to 30 minutes, meaning moderate activity that didn't trigger the 5-minute threshold would go undetected until 30 minutes of steps had accumulated. The 15-minute window closes this gap, allowing the algorithm to respond to sustained walking or light exercise within 15 minutes.
+
+**Dedicated HR/Steps graph:** Heart rate and step count data are displayed on a dedicated third graph in the Boost Overview, separate from the IOB graph. The graph appears automatically when HR or Steps are enabled in the chart menu (column 1) and collapses when neither is selected.
+
+---
+
 ### Fast-Carb Rebound Protection
 
 When fast-acting carbohydrates are eaten to treat a low (a rescue carb event), the subsequent glucose rise can look identical to an unannounced meal from the algorithm's perspective — rapid rise, no COB entry, high UAM boost factors. Without a logged carb entry, Boost would previously fire its aggressive UAM and acceleration tiers during this recovery, risking insulin stacking onto what is actually a carb-driven rebound.
@@ -133,9 +143,19 @@ This release adds fast-carb rebound detection to both Boost and Boost V2. Each l
 - Current BG is below 170 mg/dL (still in the recovery zone, not a true hyperglycaemic rise)
 - `delta_accl` is above 25 (glucose acceleration is sharp — consistent with fast-carb absorption)
 
-When this pattern is detected, **Tier 3 (UAM Boost), Tier 5 (Percent Scale), and Tier 6 (Acceleration Bolus)** are bypassed. The algorithm falls through to **Tier 7 (Enhanced oref1)** instead, which provides a modest proportional response appropriate for a recovering glucose rather than an aggressive boost.
+When this pattern is detected, **Tier 3 (UAM Boost), Tier 5 (Percent Scale), and Tier 6 (Acceleration Bolus)** have their SMB output scaled down proportionally based on the current BG, rather than being fully blocked:
 
-**What this means in practice:** after eating fast carbs without logging them, the algorithm will still deliver insulin if the glucose rises above target — it just won't multiply it up using the UAM/acceleration logic that was calibrated for unannounced meals from a normal baseline. Once BG has been above 100 mg/dL for a full 60 minutes, `recentLowBG` will rise above the threshold and normal boost behaviour resumes automatically.
+- **BG below 120 mg/dL** — strong suppression (30% of the tier's calculated SMB)
+- **BG 120–170 mg/dL** — linear ramp from 30% to 100% as BG rises further from target
+- **BG above 170 mg/dL** — no suppression (full tier response)
+
+This graduated approach means the algorithm still delivers some insulin during the early recovery phase, but increasingly so as BG moves further from target. Previously, the protection was binary — tiers were fully blocked until either `delta_accl` dropped below 25 or `recentLowBG` cleared 100 mg/dL, which could leave the algorithm unable to respond to a genuine spike building on top of a recovery.
+
+**Velocity override:** If delta exceeds 15 mg/dL/5min and BG is already more than 20 mg/dL above target, the protection releases immediately regardless of `recentLowBG`. At that point the rise is a genuine spike, not a gentle recovery.
+
+**Spike override cap:** A related enhancement addresses the SMB cap bottleneck that can occur after a post-hypo rebound develops into a full spike. When Tier 8 (regular oref1) fires with BG above 180 mg/dL, delta above 5, and `insulinReq` exceeding 3× the basal-derived `maxBolus` cap, the SMB ceiling is raised from `maxBolus` (basal × uamSMBmins / 60) to `boost_max`. This prevents the situation where the algorithm knows 2–3U of insulin is needed but can only deliver 0.1–0.2U per cycle due to a structurally low basal rate.
+
+**What this means in practice:** after eating fast carbs without logging them, the algorithm will still deliver insulin if the glucose rises above target — scaled down near target but increasingly close to the full tier output as BG climbs. If the recovery overshoots into a genuine spike above 180 mg/dL, the algorithm can now respond with appropriate SMB sizes rather than being rate-limited by the basal-derived cap.
 
 **How the detection works:**
 
@@ -382,6 +402,10 @@ Enhanced oref1 only fires when deltas are increasing above a rate of 0.5%. This 
 ## Settings
 
 The **Boost and Boost V2** settings share the following configuration. Note that the default settings are designed to disable most of the functions, and you will need to adjust them.
+
+For a detailed walkthrough of how each setting affects dosing across the Boost tier system, see the **[Boost Tuning Guide](https://tim2000s.github.io/Boost-in-AAPS_3.4/boost_tuning_guide.html)**. The guide explains the relationship between settings with scenario-based examples.
+
+To experiment with settings before applying them to your loop, use the **[Boost Simulator](https://tim2000s.github.io/Boost-in-AAPS_3.4/boost_simulator.html)**. The simulator models the full 8-tier decision tree and shows how each tier responds to your BG, delta, and IOB inputs. It can also connect to your Nightscout instance to replay real data.
 
 * *Boost insulin required percent* — Defaults to 50%. Can be increased, but increasing increases hypo risk.
 * *Boost Scale Value* — Defaults to 1.0. Only increase multiplier once you have trialled.
