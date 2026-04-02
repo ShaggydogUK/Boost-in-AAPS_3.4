@@ -843,6 +843,32 @@ open class OpenAPSBoostPlugin @Inject constructor(
             if (delta2 < 0 && improvement > 0) Math.abs(delta2) * improvement else null
         }.maxOrNull()?.toDouble() ?: 0.0
 
+        // 6b. Auto-cancel recovery TempTarget during hypo rescue rebound
+        // When a hypo has occurred (recentLowBG < 100) and BG is now rising above it,
+        // a post-exercise recovery TempTarget is counterproductive — it suppresses Boost
+        // via the high-TT check, preventing the algorithm from responding to the carb overshoot.
+        // Cancel the recovery TT and reset target to profile so Boost can re-engage.
+        if (recentLowBG < 100.0 && glucoseStatus.glucose > recentLowBG + 20) {
+            val activeTt = persistenceLayer.getTemporaryTargetActiveAt(now)
+            if (activeTt != null && activeTt.reason == TT.Reason.ACTIVITY) {
+                aapsLogger.debug(LTag.APS, "Boost: cancelling recovery TempTarget — hypo rebound detected (recentLow=${recentLowBG.toInt()}, BG now ${glucoseStatus.glucose.toInt()})")
+                disposable += persistenceLayer.cancelCurrentTemporaryTargetIfAny(
+                    timestamp = now,
+                    action = Action.TT_REMOVED,
+                    source = Sources.Aaps,
+                    note = "Auto-cancelled: hypo rebound (low ${recentLowBG.toInt()} mg/dL)",
+                    listValues = listOf(ValueWithUnit.TETTReason(TT.Reason.ACTIVITY))
+                ).subscribe()
+                // Also clear the recovery window so SMB reduction doesn't persist
+                recoveryWindowEnd = 0L
+                // Reset targets back to profile values
+                isTempTarget = false
+                minBg = hardLimits.verifyHardLimits(Round.roundTo(profile.getTargetLowMgdl(), 0.1), app.aaps.core.ui.R.string.profile_low_target, HardLimits.LIMIT_MIN_BG[0], HardLimits.LIMIT_MIN_BG[1])
+                maxBg = hardLimits.verifyHardLimits(Round.roundTo(profile.getTargetHighMgdl(), 0.1), app.aaps.core.ui.R.string.profile_high_target, HardLimits.LIMIT_MAX_BG[0], HardLimits.LIMIT_MAX_BG[1])
+                targetBg = hardLimits.verifyHardLimits(profile.getTargetMgdl(), app.aaps.core.ui.R.string.temp_target_value, HardLimits.LIMIT_TARGET_BG[0], HardLimits.LIMIT_TARGET_BG[1])
+            }
+        }
+
         // 7. Step counts
         val recentSteps5Min = StepService.getRecentStepCount5Min()
         val recentSteps15Min = StepService.getRecentStepCount15Min()
