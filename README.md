@@ -7,7 +7,7 @@
 
 [![Support Server](https://img.shields.io/discord/629952586895851530.svg?label=Discord&logo=Discord&colorB=7289da&style=for-the-badge)](https://discord.gg/aUzQ8q5zQd)
 
-***Boost and Boost V2 based on AAPS 3.4.1.0***
+***Boost and Boost V2 based on AAPS 3.4.2.1***
 
 Boost V2 is a variant of the Boost plugin that uses **Chris Wilson's DynISF V2 formula** for ISF calculation.
 
@@ -171,9 +171,11 @@ This protection applies to both the **Boost** and **Boost V2** plugins.
 
 ---
 
-### Boostv2 Plugin using DynISF V2
+### Reorganised Settings
 
-**Important:** When starting with DynISF V2 — set the **TDD adjustment factor to 100%** as your starting point. This gives you the unmodified formula output. Adjust up or down from there based on your results. Do not carry over your V1 adjustment factor, as the squared TDD term means the same percentage has a much larger effect in V2 (so if your value is below 100%, it produces significantly larger ISF values).
+The Boost and Boost V2 settings screens have been restructured into clearly separated expandable sections: **Default AAPS Settings**, **Boost Controls**, **Dynamic ISF Controls**, **Exercise Settings** (with nested Step Count, Heart Rate Integration, and Post-Exercise Recovery), **Night Mode**, **Safety Settings**, and **Advanced Settings**. Previously all settings were in a single flat list with a few sub-screens. See the [Settings](#settings) section below for the full layout.
+
+---
 
 ### Boost Overview UI
 
@@ -406,6 +408,21 @@ The **Boost and Boost V2** settings share the following configuration. Note that
 For a detailed walkthrough of how each setting affects dosing across the Boost tier system, see the **[Boost Tuning Guide](https://tim2000s.github.io/Boost-in-AAPS_3.4/boost_tuning_guide.html)**. The guide explains the relationship between settings with scenario-based examples.
 
 To experiment with settings before applying them to your loop, use the **[Boost Simulator](https://tim2000s.github.io/Boost-in-AAPS_3.4/boost_simulator.html)**. The simulator models the full 8-tier decision tree and shows how each tier responds to your BG, delta, and IOB inputs. It can also connect to your Nightscout instance to replay real data.
+
+### Settings screen layout
+
+The settings screen is organised into expandable sections:
+
+- **Default AAPS Settings** — Max basal, max IOB, autosens, temp target sensitivity adjustments
+- **Boost Controls** — Insulin required %, bolus cap, percent scale factor, boost scale, Boost max IOB, active time window, percent scale and circadian ISF toggles
+- **Dynamic ISF Controls** — Enable TDD-based ISF, adjust sensitivity, normal target, BG impact on ISF (V1 only), BG cap, TDD adjustment factor
+- **Exercise Settings** — Parent section containing:
+  - *Step Count Settings* — Activity/inactivity step thresholds, sleep-in detection, profile percentage adjustments
+  - *Heart Rate Integration* — HR zone classification, HRmax/resting HR, stress detection
+  - *Post-Exercise Recovery* — Recovery window, target BG, SMB reduction, minimum exercise duration
+- **Night Mode** — Enable/disable, time window, BG offset, COB and low TT overrides
+- **Safety Settings** — SMB enables (always, with COB, with TT, after carbs), UAM, SMB frequency and size limits, carbs request threshold, BG source and version check bypasses
+- **Advanced Settings** — Safety multipliers, short delta preference, documentation links
 
 * *Boost insulin required percent* — Defaults to 50%. Can be increased, but increasing increases hypo risk.
 * *Boost Scale Value* — Defaults to 1.0. Only increase multiplier once you have trialled.

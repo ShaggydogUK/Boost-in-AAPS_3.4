@@ -233,8 +233,12 @@ class DetermineBasalBoost @Inject constructor(
         // Boost-specific: Delta acceleration calculation
         // =====================================================================
         val shortAvgDelta = glucose_status.shortAvgDelta
+        // Floor the denominator at 2.0 mg/dL/5min to prevent division-by-near-zero
+        // amplification when BG is flat or slowly changing. Without this, shortAvgDelta
+        // of -0.3 with delta 0.0 would produce delta_accl of 100% — an artifact, not
+        // genuine acceleration.
         val delta_accl = if (abs(shortAvgDelta) > 0.001)
-            round(100.0 * (glucose_status.delta - shortAvgDelta) / abs(shortAvgDelta), 2)
+            round(100.0 * (glucose_status.delta - shortAvgDelta) / max(abs(shortAvgDelta), 2.0), 2)
         else 0.0
 
         var iTimeActive = false
