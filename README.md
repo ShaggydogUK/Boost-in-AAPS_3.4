@@ -171,9 +171,11 @@ This protection applies to both the **Boost** and **Boost V2** plugins.
 
 ---
 
-### Boostv2 Plugin using DynISF V2
+### Reorganised Settings
 
-**Important:** When starting with DynISF V2 — set the **TDD adjustment factor to 100%** as your starting point. This gives you the unmodified formula output. Adjust up or down from there based on your results. Do not carry over your V1 adjustment factor, as the squared TDD term means the same percentage has a much larger effect in V2 (so if your value is below 100%, it produces significantly larger ISF values).
+The Boost and Boost V2 settings screens have been restructured into clearly separated expandable sections: **Default AAPS Settings**, **Boost Controls**, **Dynamic ISF Controls**, **Exercise Settings** (with nested Step Count, Heart Rate Integration, and Post-Exercise Recovery), **Night Mode**, **Safety Settings**, and **Advanced Settings**. Previously all settings were in a single flat list with a few sub-screens. See the [Settings](#settings) section below for the full layout.
+
+---
 
 ### Boost Overview UI
 
