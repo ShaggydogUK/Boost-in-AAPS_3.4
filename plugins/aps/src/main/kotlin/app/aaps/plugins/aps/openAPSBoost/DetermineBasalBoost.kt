@@ -1231,13 +1231,11 @@ class DetermineBasalBoost @Inject constructor(
                         insulinReq = boostMaxIOB - iob_data.iob
                     }
                     if (insulinReq < 0) {
-                        // insulinReq is negative — BG is predicted to fall below target.
-                        // Do not override with a positive value; skip SMB entirely.
-                        consoleError.add("insulinReq < 0 (${round(insulinReq, 2)}): skipping Tier 5 SMB")
-                        microBolus = 0.0
-                    } else {
-                    microBolus = Math.floor(min(insulinReq / insulinDivisor, boost_max) * roundSMBTo) / roundSMBTo
+                        insulinDivisor = insulinReqPCT - ((abs(bg - 180) / 72) * (insulinReqPCT - (2 * scale_pct)))
+                        insulinReq = boostInsulinReq
+                        consoleError.add("Increased SMB as insulin required < 0")
                     }
+                    microBolus = Math.floor(min(insulinReq / insulinDivisor, boost_max) * roundSMBTo) / roundSMBTo
                     // Apply graduated fast-carb scaling
                     if (fastCarbRebound) {
                         val preFcSmb = microBolus
