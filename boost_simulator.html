@@ -1210,19 +1210,31 @@ function calcAll(inp) {
     !(inp.nightModeCob && inp.cob > 0);
 
   // ── Derived dynamics (for tier decision tree) ─────────────
-  // mirrors DetermineBasalBoost.kt lines 235-237
+  // mirrors DetermineBasalBoost.kt — denominator floored at 2.0 to prevent near-zero amplification
   const delta_accl = Math.abs(inp.shortAvgDelta) > 0.001
-    ? Math.round(100 * (inp.delta - inp.shortAvgDelta) / Math.abs(inp.shortAvgDelta) * 100) / 100
+    ? Math.round(100 * (inp.delta - inp.shortAvgDelta) / Math.max(Math.abs(inp.shortAvgDelta), 2.0) * 100) / 100
     : 0;
   const uamBoost1 = Math.abs(inp.shortAvgDelta) > 0.001 ? inp.delta / inp.shortAvgDelta : 0;
   const uamBoost2 = Math.abs(inp.longAvgDelta) > 0.001 ? Math.abs(inp.delta / inp.longAvgDelta) : 0;
   // Simplified eventualBG: 30-min trend projection using longAvgDelta (6 × 5-min intervals)
   const eventualBG = inp.bg + inp.longAvgDelta * 6;
-  // Fast-carb rebound detection (mirrors DetermineBasalBoost.kt lines 1089-1096)
+  // Graduated fast-carb rebound detection (mirrors DetermineBasalBoost.kt)
   const reversalScore = (inp.longAvgDelta < 0 && inp.delta > 0)
     ? inp.delta * Math.abs(inp.longAvgDelta) : 0;
-  const fastCarbRebound = (inp.recentLow || reversalScore > 30)
-    && inp.cob === 0 && inp.bg < 170 && delta_accl > 25;
+  const fastCarbConditions = (inp.recentLow || reversalScore > 30)
+    && inp.cob === 0 && delta_accl > 25;
+  let fastCarbScale = 1.0;
+  let fastCarbRebound = false;
+  if (fastCarbConditions && inp.bg < 170) {
+    // Velocity override: extreme rise well above target is a genuine spike
+    if (inp.delta > 15 && inp.bg > inp.target + 20) {
+      fastCarbScale = 1.0;
+      fastCarbRebound = false;
+    } else {
+      fastCarbScale = inp.bg < 120 ? 0.3 : 0.3 + 0.7 * (inp.bg - 120) / 50;
+      fastCarbRebound = true;
+    }
+  }
 
   // boost_scale = profile.boost_scale × (profileSwitch/100)
   const boost_scale = inp.scale * profileScale;
@@ -1252,20 +1264,20 @@ function calcAll(inp) {
       microBolus = Math.floor(Math.min(insulinReqV1 / baseReqDivisor, cobBoostMax) * R) / R;
     }
     // Tier 3: UAM Boost (strong acceleration)
-    else if (!fastCarbRebound && inp.delta >= 5 && inp.shortAvgDelta >= 3
+    else if (inp.delta >= 5 && inp.shortAvgDelta >= 3
         && uamBoost1 > 1.2 && uamBoost2 > 2
         && boostActive && inp.iob < boostMaxIOB && boost_scale < 3
         && eventualBG > inp.target && inp.bg > 80 && insulinReqV1 > 0) {
       tier = 'T3_UAM_BOOST';
       let boostInsReq = Math.min(boost_scale * effectiveBasal, inp.bolusMax);
       if (boostInsReq > boostMaxIOB - inp.iob) boostInsReq = boostMaxIOB - inp.iob;
-      // When delta_accl > 1, switch to scaled divisor (percent scale)
       const t3div = delta_accl > 1 ? scaledDivisor : baseReqDivisor;
       if (boostInsReq < insulinReqV1 / t3div) {
         microBolus = Math.floor(Math.min(insulinReqV1 / t3div, inp.bolusMax) * R) / R;
       } else {
         microBolus = Math.floor(Math.min(boostInsReq, inp.bolusMax) * R) / R;
       }
+      if (fastCarbRebound) microBolus = Math.floor(microBolus * fastCarbScale * R) / R;
     }
     // Tier 4: UAM High Boost (BG > 180, delta_accl > 5)
     else if (delta_accl > 5 && inp.bg > 180 && boostActive && inp.iob < boostMaxIOB
@@ -1280,28 +1292,29 @@ function calcAll(inp) {
         microBolus = Math.floor(Math.min(boostInsReq, inp.bolusMax) * R) / R;
       }
     }
-    // Tier 5: Percent Scale (BG 98-181, delta > 3, any acceleration)
-    else if (!fastCarbRebound && inp.bg > 98 && inp.bg < 181 && inp.delta > 3
+    // Tier 5: Percent Scale (BG 110-181, delta > 3, any acceleration)
+    else if (inp.bg > 110 && inp.bg < 181 && inp.delta > 3
         && delta_accl > 0 && eventualBG > inp.target && inp.iob < boostMaxIOB && boostActive) {
       tier = 'T5_PERCENT_SCALE';
       let insReq = insulinReqV1;
       if (insReq > boostMaxIOB - inp.iob) insReq = boostMaxIOB - inp.iob;
       let div5 = scaledDivisor;
       if (insReq < 0) {
-        // BG falling but still above target – use doubled scale
         div5 = baseReqDivisor - ((Math.abs(inp.bg - 180) / 72) * (baseReqDivisor - 2 * scale_pct));
         insReq = effectiveBasal;
       }
       microBolus = Math.floor(Math.min(insReq / div5, inp.bolusMax) * R) / R;
+      if (fastCarbRebound) microBolus = Math.floor(microBolus * fastCarbScale * R) / R;
     }
     // Tier 6: Acceleration Bolus (delta_accl > 25)
-    else if (!fastCarbRebound && delta_accl > 25 && inp.delta > 4
+    else if (delta_accl > 25 && inp.delta > 4
         && inp.iob < boostMaxIOB && boostActive && eventualBG > inp.target) {
       tier = 'T6_ACCELERATION';
       let boostInsReq = Math.min(boost_scale * effectiveBasal, inp.bolusMax);
       if (boostInsReq > boostMaxIOB - inp.iob) boostInsReq = boostMaxIOB - inp.iob;
       const div6 = baseReqDivisor - ((Math.abs(inp.bg - 180) / 72) * (baseReqDivisor - 2 * scale_pct));
       microBolus = Math.floor(Math.min(boostInsReq / div6, inp.bolusMax) * R) / R;
+      if (fastCarbRebound) microBolus = Math.floor(microBolus * fastCarbScale * R) / R;
     }
     // Tier 7: Enhanced oref1 (mild rise, slight acceleration)
     else if (boostActive && inp.delta > 0 && delta_accl >= 0.5) {
@@ -1314,6 +1327,15 @@ function calcAll(inp) {
     else {
       tier = 'T8_REGULAR_OREF1';
       microBolus = Math.floor(Math.min(insulinReqV1 / baseReqDivisor, maxBasalBolus) * R) / R;
+    }
+
+    // Spike override: when BG > 180, delta > 5, and insulinReq vastly exceeds
+    // the basal-derived cap, raise the SMB ceiling to boost_max
+    if (boostActive && inp.bg > 180 && inp.delta > 5 && insulinReqV1 > 3 * maxBasalBolus
+        && microBolus >= maxBasalBolus - 0.05 && inp.iob < boostMaxIOB) {
+      const spikeOverrideCap = Math.min(inp.bolusMax, boostMaxIOB - inp.iob);
+      const overrideBolus = Math.floor(Math.min(insulinReqV1 / baseReqDivisor, spikeOverrideCap) * R) / R;
+      if (overrideBolus > microBolus) microBolus = overrideBolus;
     }
   }
 
@@ -1331,7 +1353,7 @@ function calcAll(inp) {
     insulinReqV1, scaledDivisor, baseReqDivisor, scale_pct, rawMicroBolus, rawMicroBolusUnscaled, microBolus,
     ioBlock, boostDisabledScale, nightSuppressed,
     ttRatioApplied, circFactor,
-    delta_accl, uamBoost1, uamBoost2, eventualBG, fastCarbRebound, tier,
+    delta_accl, uamBoost1, uamBoost2, eventualBG, fastCarbRebound, fastCarbScale, tier,
     boost_scale,
     aggScore,
   };
@@ -1416,7 +1438,7 @@ function update() {
     'BLOCKED':'pill-red',
   };
   pills.push({text: tierLabels[r.tier] || r.tier, cls: tierCls[r.tier] || 'pill-gray'});
-  if (r.fastCarbRebound) pills.push({text:'Fast-carb protection: Tiers 3/5/6 suppressed', cls:'pill-red'});
+  if (r.fastCarbRebound) pills.push({text:`Fast-carb protection: ${Math.round(r.fastCarbScale*100)}% scale`, cls:'pill-red'});
   pills.push({text:`δ_accl=${fmt(r.delta_accl,1)}% | UAM1=${fmt(r.uamBoost1,2)} | UAM2=${fmt(r.uamBoost2,2)} | eBG=${fmt(r.eventualBG,0)}`, cls:'pill-gray'});
 
   document.getElementById('status-row').innerHTML = pills.map(p =>
@@ -1495,7 +1517,7 @@ function update() {
   document.getElementById('out-tier-name').style.color = tm.color;
   document.getElementById('out-tier-name').textContent  = tm.label;
   document.getElementById('out-tier-why').textContent   = r.fastCarbRebound && ['T3_UAM_BOOST','T5_PERCENT_SCALE','T6_ACCELERATION'].includes(r.tier)
-    ? '⚠ Fast-carb rebound detected — this tier suppressed'
+    ? `⚠ Fast-carb rebound — scaled to ${Math.round(r.fastCarbScale*100)}% (BG ${inp.bg})`
     : tm.why;
   const smbEl    = document.getElementById('out-tier-smb');
   const smbUnitEl = document.getElementById('out-tier-smb-unit');
@@ -1516,7 +1538,7 @@ function update() {
     smbBreak += `δ=${inp.delta} | shortAvg=${inp.shortAvgDelta} | longAvg=${inp.longAvgDelta} → δ_accl=${fmt(r.delta_accl,1)}%\n`;
     smbBreak += `uamBoost1=${fmt(r.uamBoost1,2)} | uamBoost2=${fmt(r.uamBoost2,2)} | eventualBG≈${fmt(r.eventualBG,0)} | boost_scale=${fmt(r.boost_scale,2)}\n`;
     smbBreak += `Active tier: ${r.tier}\n`;
-    if (r.fastCarbRebound) smbBreak += `⚠ Fast-carb rebound: Tiers 3/5/6 suppressed\n`;
+    if (r.fastCarbRebound) smbBreak += `⚠ Fast-carb rebound: Tiers 3/5/6 scaled to ${Math.round(r.fastCarbScale*100)}% (BG ${inp.bg}, range 30–100%)\n`;
     const tierKey = r.tier;
     if (tierKey === 'T1_COB_PRIMARY') {
       smbBreak += `min(insulinReq÷insulinReqPCT, insulinReq) = min(${fmt(r.insulinReqV1/r.baseReqDivisor,3)}, ${fmt(r.insulinReqV1,3)}) = ${fmt(r.microBolus,2)} U`;
@@ -1878,21 +1900,30 @@ function drawSmbChart(inp, r) {
       smb = Math.floor(Math.min(insulinReq/baseReqDivisor_chart, insulinReq) * RC) / RC;
     } else if (inp.cob > 0 && inp.lastCarbAge < 40 && inp.delta > 5) {
       smb = Math.floor(Math.min(insulinReq/baseReqDivisor_chart, inp.bolusMax) * RC) / RC;
-    } else if (!r.fastCarbRebound && inp.delta >= 5 && inp.shortAvgDelta >= 3 && r.uamBoost1 > 1.2 && r.uamBoost2 > 2 && inp.iob < inp.maxIob && eventBG > inp.target && bg > 80) {
+    } else if (inp.delta >= 5 && inp.shortAvgDelta >= 3 && r.uamBoost1 > 1.2 && r.uamBoost2 > 2 && inp.iob < inp.maxIob && eventBG > inp.target && bg > 80) {
       const t3d = r.delta_accl > 1 ? scaledDiv : baseReqDivisor_chart;
       smb = Math.floor(Math.min(insulinReq/t3d, inp.bolusMax) * RC) / RC;
+      if (r.fastCarbRebound) smb = Math.floor(smb * r.fastCarbScale * RC) / RC;
     } else if (r.delta_accl > 5 && bg > 180 && inp.iob < inp.maxIob && eventBG > inp.target && bg > 80) {
       smb = Math.floor(Math.min(Math.min(boost_scale_chart*effectiveBasal_chart,inp.bolusMax), inp.bolusMax) * RC) / RC;
-    } else if (!r.fastCarbRebound && bg > 98 && bg < 181 && inp.delta > 3 && r.delta_accl > 0 && eventBG > inp.target && inp.iob < inp.maxIob) {
+    } else if (bg > 110 && bg < 181 && inp.delta > 3 && r.delta_accl > 0 && eventBG > inp.target && inp.iob < inp.maxIob) {
       smb = Math.floor(Math.min(insulinReq/scaledDiv, inp.bolusMax) * RC) / RC;
-    } else if (!r.fastCarbRebound && r.delta_accl > 25 && inp.delta > 4 && inp.iob < inp.maxIob && eventBG > inp.target) {
+      if (r.fastCarbRebound) smb = Math.floor(smb * r.fastCarbScale * RC) / RC;
+    } else if (r.delta_accl > 25 && inp.delta > 4 && inp.iob < inp.maxIob && eventBG > inp.target) {
       const d6 = baseReqDivisor_chart - ((Math.abs(bg-180)/72)*(baseReqDivisor_chart - 2*scale_pct_c));
       const bi = Math.min(boost_scale_chart*effectiveBasal_chart, inp.bolusMax);
       smb = Math.floor(Math.min(bi/d6, inp.bolusMax) * RC) / RC;
+      if (r.fastCarbRebound) smb = Math.floor(smb * r.fastCarbScale * RC) / RC;
     } else if (inp.delta > 0 && r.delta_accl >= 0.5) {
       smb = Math.floor(Math.min(insulinReq/baseReqDivisor_chart, inp.bolusMax) * RC) / RC;
     } else {
       smb = Math.floor(Math.min(insulinReq/baseReqDivisor_chart, maxBasalBolus_chart) * RC) / RC;
+      // Spike override: raise cap when rate-limited during a genuine spike
+      if (bg > 180 && inp.delta > 5 && insulinReq > 3 * maxBasalBolus_chart && smb >= maxBasalBolus_chart - 0.05 && inp.iob < inp.maxIob) {
+        const soCap = Math.min(inp.bolusMax, inp.maxIob - inp.iob);
+        const soSmb = Math.floor(Math.min(insulinReq/baseReqDivisor_chart, soCap) * RC) / RC;
+        if (soSmb > smb) smb = soSmb;
+      }
     }
     smbs.push(Math.max(0, smb));
   }
